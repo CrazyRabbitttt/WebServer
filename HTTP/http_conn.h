@@ -28,11 +28,9 @@ class http_conn {
 public:
 
     http_conn() {}
-
     ~http_conn() {}
-
+    void init(int sockfd, const sockaddr_in &addr);     //init，传入connfd和客户端地址
     void process();                 //任务类,处理客户端的请求，拼接成响应的信息传递回主线程中
-
 
 public:
     static int m_epollfd;           //所有socket事件(http)都注册到同一个epoll对象,用静态变量就好了
@@ -41,7 +39,7 @@ public:
 
 private:
     int m_sockfd;                   //http的socket
-    sockaddr_in m_address;          //通信的socket地址
+    sockaddr_in m_address;          //进行通信的socket地址
 
 
 };

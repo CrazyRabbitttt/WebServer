@@ -65,8 +65,10 @@ void modfd(int epollfd, int fd, int ev) {
     epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &event);
 }
 
+//初始化http连接，外部调用初始化套接字地址
+void http_conn::init(int sockfd, const sockaddr_in &client_addr) {
 
-
+}
 
 
 

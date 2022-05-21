@@ -124,7 +124,7 @@ int main(int argc, char** argv)
                     continue;
                 }
                 users[connfd].init(connfd, client_address);     //init HTTP请求连接
-
+#endif
             }
         }
 
