@@ -18,6 +18,9 @@
 #define MAX_EVENT_NUMBER    10000       //最大事件数目
 
 
+// #define listenfdET                        //边缘触发模式
+#define listenfdLT                        //水平触发模式
+
 
 //epoll事件添加、删除、oneshot,在http...cpp中声明
 
@@ -96,6 +99,34 @@ int main(int argc, char** argv)
 
     bool stop_server = false;
     while (!stop_server) {
+        int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
+        if (number < 0 && errno != EINTR) {
+            //todo : Log
+            break;
+        }
+
+        for (int i = 0; i < number; i++) {
+            int sockfd = events[i].data.fd;
+
+            //处理新到的客户端的连接，listen
+            if(sockfd == listenfd) {
+                struct sockaddr_in client_address;
+                socklen_t client_addrlength = sizeof(client_address);
+#ifdef listenfdLT
+                //accept客户端连接请求
+                int connfd = accept(listenfd, (sockaddr*) &client_address, &client_addrlength);
+                if (connfd < 0) {
+                    //todo : log
+                    continue;       //失败，那就继续
+                }
+                if (http_conn::m_user_count >= MAX_FD) {        //目前的连接数目太多了，要回送给客户端信息
+                    //todo : log
+                    continue;
+                }
+                users[connfd].init(connfd, client_address);     //init HTTP请求连接
+
+            }
+        }
 
     }
 
