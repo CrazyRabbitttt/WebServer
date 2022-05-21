@@ -114,7 +114,7 @@ int main(int argc, char** argv)
                 socklen_t client_addrlength = sizeof(client_address);
 #ifdef listenfdLT
                 //accept客户端连接请求
-                int connfd = accept(listenfd, (sockaddr*) &client_address, &client_addrlength);
+                int connfd = accept(listenfd, (struct sockaddr*) &client_address, &client_addrlength);
                 if (connfd < 0) {
                     //todo : log
                     continue;       //失败，那就继续
@@ -124,6 +124,23 @@ int main(int argc, char** argv)
                     continue;
                 }
                 users[connfd].init(connfd, client_address);     //init HTTP请求连接
+#endif
+
+#ifdef listenfdET
+            //因为ET模式仅仅提示一次，所以要while循环进行读取
+            while (1) {
+                int connfd = accept(listenfd, (struct sockaddr*)&client_address, &client_addrlength);
+                if (connfd < 0) {
+                    //todo : log
+                    break;
+                }
+                if (http_conn::m_user_count >= MAX_FD) {
+                    //todo : log
+                    break;
+                }
+                users[connfd].init(connfd, client_address);
+            }
+
 #endif
             }
         }

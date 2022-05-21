@@ -67,6 +67,16 @@ void modfd(int epollfd, int fd, int ev) {
 
 //初始化http连接，外部调用初始化套接字地址
 void http_conn::init(int sockfd, const sockaddr_in &client_addr) {
+    m_sockfd  = sockfd;
+    m_address = client_addr;
+
+    int reuse = 1;
+    //设置端口复用
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    addfd(m_epollfd, sockfd, true);         //添加事件，将这个conn连接添加到epoll
+    m_user_count++;                         //用户数量自➕
+    
+    //todo : 私有的init();
 
 }
 
