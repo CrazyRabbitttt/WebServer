@@ -45,7 +45,7 @@ int main(int argc, char** argv)
     threadpool<http_conn> *pool = NULL;
     try {
         //尝试创建线程池,将http传给线程池进行处理。调用任务类的process()
-        pool = new threadpool<http_conn>(connPool, 8, 10000);
+        pool = new threadpool<http_conn>(connPool);
     } catch (...) {
         return 1;
     }

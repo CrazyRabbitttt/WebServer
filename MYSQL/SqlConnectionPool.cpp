@@ -1,57 +1,54 @@
-#include "SqlConnectionPoll.h"
+#include "SqlConnectionPool.h"
 
 using namespace std;
 
-
 connection_pool::connection_pool() {
-    this -> CurConn = 0;
-    this -> FreeConn = 0;
+    this->CurConn = 0;
+    this->FreeConn = 0;
 }
 
+//单例模式通过静态变量获得
+connection_pool * connection_pool::GetInstance() {
+    static connection_pool connPool;
+    return &connPool;
+}
 
-void connection_pool::init(string url, string User, string Passwd, string DBName, int Port, unsigned int MaxConn)
-{
-    this -> url = url;
-    this -> Port = Port;
-    this -> User = User;
-    this -> PassWord = Passwd;
-    this -> DataBaseName = DBName;
+void connection_pool::init(string url, string User, string PassWord, string DbName, int Port, unsigned int MaxCoon) {
+    this->url   = url;
+    this->Port  = Port;
+    this->User  = User;
+    this->PassWord = PassWord;
+    this->DatabaseName = DbName; 
 
-    lock.lock();        //上锁
+    lock.lock();
 
     for (int i = 0; i < MaxConn; i++) {
         MYSQL *conn = NULL;
-        conn = mysql_init(conn);            //初始化sql， Max个SQL连接
+        conn = mysql_init(conn);
 
         if (conn == NULL) {
             cout << "Error:" << mysql_error(conn);
             exit(1);
         }
+        conn = mysql_real_connect(conn, url.c_str(), User.c_str(), PassWord.c_str(), DbName.c_str(), Port, NULL, 0);
 
-        conn = mysql_real_connect(conn, url.c_str(), User.c_str(), Passwd.c_str(), DBName.c_str(), Port, NULL, 0);
-
-        if (conn == NULL) {
-            cout << "Error:" << mysql_error(conn);
+        if (conn = NULL) {
+            cout << "Error: " << mysql_error(conn);
             exit(1);
         }
-
-        /* 更新连接池*/
-        connList.push_back(conn);           //将得到的连接加入到List中供使用
-        ++FreeConn;
+        connList.push_back(conn);   //将空闲连接添加到List中
+        ++FreeConn;                 //空闲可使用的连接
 
     }
 
-    reserve = sem(FreeConn);                //使用目前空闲资源数目初始化信号量
+    reserve = sem(FreeConn);
 
-    this ->MaxConn = FreeConn;
-
-    lock.unlock();      //解锁
-
+    this->MaxConn = FreeConn;
+    lock.unlock();
 }
 
 
-
-//有请求的时候从数据库连接池中返回一个可用的连接，更新空闲与使用变量
+//从数据库连接池中返回一个可用的连接，更新空闲连接的数目
 MYSQL *connection_pool::GetConnection() {
     MYSQL *conn = NULL;
 
@@ -59,25 +56,26 @@ MYSQL *connection_pool::GetConnection() {
         return NULL;
     }
 
-    reserve.wait();                     //等待信号量的可用资源,为零就阻塞
+    reserve.wait();             //信号量进行等待可用
 
     lock.lock();
 
-    conn = connList.front();            //从空闲链表中拿到可用资源
+    conn = connList.front();
     connList.pop_front();
 
-    --FreeConn;                         //更新资源数目
-    ++CurConn;
+    --FreeConn;                 //可用的减少
+    ++CurConn;                  //目前正在使用的加一
 
     lock.unlock();
-    
     return conn;
 
 }
 
 
-bool connection_pool::ReleaseConnection(MYSQL *conn) {
+bool connection_pool::ReleaseConnection(MYSQL* conn) {
     if (conn == NULL) return false;
+
+    //销毁就要放到List中
 
     lock.lock();
 
@@ -87,54 +85,50 @@ bool connection_pool::ReleaseConnection(MYSQL *conn) {
 
     lock.unlock();
 
-    reserve.post();                     //增加信号量（连接池增加了），唤醒阻塞的线程
+    reserve.post();                     //来可用的啦，没有的就会接收到信号量的通知
     return true;
+
 }
 
-/* 销毁掉连接池 */
-void connection_pool::DestoryPool() {
-    lock.lock();
-    if (connList.size()) {
-        auto it = connList.begin();
-        //使用迭代器遍历容器
-        for (it; it != connList.end(); it++) {
-            MYSQL *curconn = *it;
-            mysql_close(curconn);
-        }
-        CurConn = 0;            //设置可用数目
-        FreeConn = 0;
-        connList.clear();       //清空链表
-        lock.unlock();
-    }
 
+//销毁数据库连接池子
+
+void connection_pool::DestroyPool() {
+    lock.lock();
+
+    if (connList.size() > 0) {
+        list<MYSQL*>::iterator it;
+        for (it = connList.begin(); it != connList.end(); it++) {
+            MYSQL *tmp = *it;
+            mysql_close(tmp);               //关掉数据库连接
+        }
+        CurConn = 0;
+        FreeConn= 0;
+        connList.clear();
+
+        lock.unlock();
+        // return ;
+    }
     lock.unlock();
 }
 
-
-int connection_pool::GetFreeCoon() {
+//当前空闲的连接数
+int connection_pool::GetFreeConn() {
     return this->FreeConn;
 }
 
-/* 析构函数自动调用Destory函数 */
 connection_pool::~connection_pool() {
-    DestoryPool();      
+    DestroyPool();
 }
 
-/* 利用局部静态变量来获取唯一的连接池对象
-    使用静态类变量的话并发情况下肯能会生成多个对象*/
-connection_pool * connection_pool::GetInstance() {
-    static connection_pool connPool;
-    return &connPool;
-}
+connectionRAII::connectionRAII(MYSQL **SQL, connection_pool * connPool) {
+    *SQL = connPool->GetConnection();           //获得可用的连接
 
-/* 使用RAII进行一个连接的管理*/
-connectionRAII::connectionRAII(MYSQL **SQL, connection_pool *connpool) {
-    *SQL = connpool->GetConnection();
-
-    connRAII = *SQL;            //数据库连接
-    poolRAII = connpool;        //连接池
+    conRAII  = *SQL;
+    poolRAII = connPool;
 }
 
 connectionRAII::~connectionRAII() {
-    poolRAII -> ReleaseConnection(connRAII);
+    poolRAII->ReleaseConnection(conRAII);           //调用池子中的Release释放掉当前的连接
 }
+
