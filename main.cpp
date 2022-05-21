@@ -84,16 +84,20 @@ int main(int argc, char** argv)
 
     //listen
     ret = listen(listenfd, 5);
-    assert(ret >= 0);
+    assert(ret >= 0);  
 
-    //创建epoll对象事件表
+    //创建epoll对象事件表,epoll_wait中完成的事件都会写到这个数组中的
     epoll_event events[MAX_EVENT_NUMBER];
     epollfd = epoll_create(5);
 
     //Listen不能是one_shot,否则只能监听一个客户端连接
     addfd(epollfd, listenfd, false);
-    
+    http_conn::m_epollfd = epollfd;                    //将epollfd传进静态变量，供所有的http共享使用
 
+    bool stop_server = false;
+    while (!stop_server) {
+
+    }
 
 
 

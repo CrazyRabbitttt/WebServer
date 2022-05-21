@@ -27,21 +27,21 @@
 class http_conn {
 public:
 
-    static int m_epollfd;           //所有socket事件(http)都注册到同一个epoll对象,用静态变量就好了
-    static int m_user_count;        //用户数量 
-
     http_conn() {}
 
     ~http_conn() {}
 
-    void process();         //任务类,处理客户端的请求，拼接成响应的信息传递回主线程中
+    void process();                 //任务类,处理客户端的请求，拼接成响应的信息传递回主线程中
 
 
 public:
-    MYSQL *mysql;           //用于connectionRAII时候传入进行初始化
-
+    static int m_epollfd;           //所有socket事件(http)都注册到同一个epoll对象,用静态变量就好了
+    static int m_user_count;        //用户数量也同样是共享的
+    MYSQL *mysql;                   //用于connectionRAII时候传入进行初始化
 
 private:
+    int m_sockfd;                   //http的socket
+    sockaddr_in m_address;          //通信的socket地址
 
 
 };
