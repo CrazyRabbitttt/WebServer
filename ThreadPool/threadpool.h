@@ -56,23 +56,20 @@ threadpool<T>::threadpool(connection_pool *connPool,int thread_number, int max_r
         }
 
         for (int i = 0; i < thread_number; i++) {
-            /* 创建子线程，执行worker,传过去的是线程池对象，调用对象的run()函数*/
-            if (pthread_create(m_threads + i, NULL, worker, this) != 0) {   
-                delete[] m_thread_s;            /* 失败就销毁*/
+            //创建线程
+            if (pthread_create(m_threads + i, NULL, worker, this) != 0) {
+                delete[] m_threads;
                 throw std::exception();
             }
 
-            /* 线程分离，不需要单独对线程进行回收*/
+            //线程分离自动进行释放，不用等主线程回收
             if (pthread_detach(m_threads[i])) {
                 delete[] m_threads;
                 throw std::exception();
             }
         }
-        
     }
     
-
-
 template<typename T>
 threadpool<T>::~threadpool()
 {
@@ -111,9 +108,7 @@ void * threadpool<T>::worker(void *arg) {
     return pool;
 }
 
-
-/* run()：工作线程从请求队列中取出任务进行处理*/
-
+/* run()：工作线程从请求队列中取出任务进行处理, 处理就是调用process()函数，每个进行处理的类应该自定义这个函数*/
 
 template<typename T>
 void threadpool<T>::run() {
@@ -137,6 +132,7 @@ void threadpool<T>::run() {
 
         /*连接数据库，从连接池中取出来一个数据库连接*/
 
+                                //传递的是http类的变量mysql
         connectionRAII mysqlcon(&request->mysql, m_connPool);
 
         /*Process进行处理*/
