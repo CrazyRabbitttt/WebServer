@@ -90,4 +90,27 @@ void http_conn::close_conn(bool real_close) {
 }
 
 
+bool http_conn::read_once() { 
+    printf("一次性读取完所有的数据！\n");
+    return true;
+}
+
+bool http_conn::write() {
+    printf("一次性写完所有的数据\n");
+    return true;
+}
+
+
+//线程池中的工作线程进行调用，处理http请求的函数的入口
+void http_conn::process() {
+        //解析请求
+
+        //生成响应
+        
+
+}
+
+
+
+
 

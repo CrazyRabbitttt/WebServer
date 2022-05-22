@@ -32,6 +32,10 @@ public:
     void init(int sockfd, const sockaddr_in &addr);     //init，传入connfd和客户端地址
     void process();                                     //任务类,处理客户端的请求，拼接成响应的信息传递回主线程中
     void close_conn(bool real_close = true);            //进行客户端的连接关闭 
+    bool read_once();                                   //非阻塞的读取，读数据的主入口
+    bool write();                                       //向连接中写数据
+
+
 
 public:
     static int m_epollfd;           //所有socket事件(http)都注册到同一个epoll对象,用静态变量就好了

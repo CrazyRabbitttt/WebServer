@@ -29,6 +29,12 @@ extern void removefd(int epollfd, int fd);
 extern int  setnoblocking(int fd);
 extern void modfd(int epollfd, int fd, int ev);
 
+void show_error(int connfd, const char * info) {
+    printf("%s", info);
+    send(connfd, info, strlen(info), 0);
+    close(connfd);
+}
+
 
 //信号的处理函数
 void addsig(int sig, void(handler)(int)) {
@@ -47,6 +53,9 @@ int main(int argc, char** argv)
         exit(-1);
     }
     
+    const char * ip = argv[1];
+    int port = atoi(argv[2]);
+
     //对于SIGPIE信号进行处理
 
     addsig(SIGPIPE, SIG_IGN);           //忽略，默认就是终止进程
