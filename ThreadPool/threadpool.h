@@ -55,10 +55,10 @@ threadpool<T>::threadpool(int thread_number, int max_request)
         if (!m_threads) {
             throw std::exception();
         }
-        printf("到达创建线程前...\n");
+        // printf("到达创建线程前...\n");
         for (int i = 0; i < thread_number; i++) {
             //创建线程
-            printf("创建线程！！！！\n");
+            printf("创建线程%d\n", i);
             if (pthread_create(m_threads + i, NULL, worker, this) != 0) {
                 delete[] m_threads;
                 throw std::exception();
