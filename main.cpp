@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <signal.h>
 #include <string.h>
-#include "http_conn.h"
+#include "HTTP/http_conn.h"
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -48,34 +48,37 @@ void addsig(int sig, void(handler)(int)) {
 
 int main(int argc, char** argv)
 {
-    if (argc <= 1) {
-        printf("Usage: %s port_number\n", basename(argv[0]));
-        exit(-1);
-    }
+    //if (argc <= 2) {
+      //  printf("Usage: %s port_number\n", basename(argv[0]));
+       // exit(-1);
+    //}
     
-    const char * ip = argv[1];
-    int port = atoi(argv[2]);
+    // const char * ip = argv[1];
+    int port = atoi(argv[1]);
 
     //对于SIGPIE信号进行处理
 
     addsig(SIGPIPE, SIG_IGN);           //忽略，默认就是终止进程
 
     //创建数据库连接池子,单例模式创建的对象
-    connection_pool *connPool = connection_pool::GetInstance();
-    connPool->init("localhost", "root", "shaoguixin1+", "AA", 3306, 8);
+    //change :
+    // connection_pool *connPool = connection_pool::GetInstance();
+    // connPool->init("localhost", "root", "shaoguixin1+", "AA", 3306, 8);
 
+    printf("Calling begin...\n");
     threadpool<http_conn> *pool = NULL;
     try {
         //尝试创建线程池,将http传给线程池进行处理。调用任务类的process()
-        pool = new threadpool<http_conn>(connPool);
+        pool = new threadpool<http_conn>;       //change
+        printf("Calling 线程池...\n");
     } catch (...) {
         return 1;
     }
-    
+    printf("线程池创建完成...\n");
     //客户端连接的数组
     http_conn * users = new http_conn[MAX_FD];
     assert(users);
-
+    printf("客户端数组完成...\n");
     //创建socket
     int listenfd = socket(PF_INET, SOCK_STREAM, 0);                         
     assert(listenfd >= 0);
@@ -88,7 +91,7 @@ int main(int argc, char** argv)
     bzero(&address, sizeof(address));
     address.sin_family = AF_INET;                       //Ipv4
     address.sin_addr.s_addr = htonl(INADDR_ANY);        //主机转网络
-
+    address.sin_port = htons(port);
 
     //bind
     ret = bind(listenfd, (struct sockaddr*)&address, sizeof(address));           //绑定
@@ -97,7 +100,7 @@ int main(int argc, char** argv)
     //listen
     ret = listen(listenfd, 5);
     assert(ret >= 0);  
-
+    printf("Listening 完成...\n");
     //创建epoll对象事件表,epoll_wait中完成的事件都会写到这个数组中的
     epoll_event events[MAX_EVENT_NUMBER];
     epollfd = epoll_create(5);

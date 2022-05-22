@@ -1,5 +1,11 @@
 #include "http_conn.h"
 
+
+//进行静态变量的初始化操作
+int http_conn::m_epollfd = -1;
+int http_conn::m_user_count = 0;
+
+
 // #define connfdET         //边缘触发模式
 #define connfdLT            //水平触发模式
 
