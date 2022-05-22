@@ -102,6 +102,7 @@ int main(int argc, char** argv)
         int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
         if (number < 0 && errno != EINTR) {
             //todo : Log
+            printf("epoll failure!\n");
             break;
         }
 
@@ -144,11 +145,30 @@ int main(int argc, char** argv)
 #endif
             } else if(events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {        //处理异常断开连接的事件
                 //服务器需要进行连接的关闭，移除对应的定时器
+                //todo: 应该封装在定时器内部的，目前只是直接关闭而已
+                users[sockfd].close_conn();         //进行客户端连接的关闭
+            } else if(events[i].events && EPOLLIN) {                                //数据可以进行读取的事件
+                if(users[sockfd].read_once()) {
+                    //一次性将所有的数据进行读取完毕
+                    //将http_conn传到线程池上，工作线程进行连接的处理
+                    pool->append(users + sockfd);
+                }else {     //读取数据失败
+                    users[sockfd].close_conn();         //进行http连接的关闭
+                }
+            } else if (events[i].events & EPOLLOUT) {                               //数据可以进行写操作
+                if(!users[sockfd].write()) {
+                    users[sockfd].close_conn();         //如果写失败了就关闭连接
+                }
             }
         }
 
     }
 
+    //一般来说程序是不会跳出循环的，到这一步就是说明程序进行了断开
+    close(epollfd);
+    close(listenfd);
+    delete [] users;
+    delete pool;
 
 
 }
