@@ -142,6 +142,8 @@ int main(int argc, char** argv)
             }
 
 #endif
+            } else if(events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {        //处理异常断开连接的事件
+                //服务器需要进行连接的关闭，移除对应的定时器
             }
         }
 

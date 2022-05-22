@@ -77,7 +77,16 @@ void http_conn::init(int sockfd, const sockaddr_in &client_addr) {
     m_user_count++;                         //用户数量自➕
     
     //todo : 私有的init();
+}
 
+
+//进行http客户端连接的关闭
+void http_conn::close_conn(bool real_close) {
+    if (real_close && (m_sockfd != -1)) {       //判断不能进行关闭的条件
+        removefd(m_epollfd, m_sockfd);
+        m_sockfd = -1;
+        m_user_count--;
+    }
 }
 
 
