@@ -26,7 +26,8 @@
 
 class http_conn {
 public:
-
+    static const int READ_BUFFER_SIZE = 2048;       //读缓冲区的大小
+    static const int WRITE_BUFFER_SIZE = 1024;      //写缓冲区的大小
     http_conn() {}
     ~http_conn() {}
     void init(int sockfd, const sockaddr_in &addr);     //init，传入connfd和客户端地址
@@ -43,9 +44,10 @@ public:
     // MYSQL *mysql;                   //用于connectionRAII时候传入进行初始化
 
 private:
-    int m_sockfd;                   //http的socket
-    sockaddr_in m_address;          //进行通信的socket地址
-
+    int m_sockfd;                       //http的socket
+    sockaddr_in m_address;              //进行通信的socket地址
+    char m_read_buf[READ_BUFFER_SIZE];  //读缓冲区
+    int m_read_idx;                     //当前已经读取的最后一个数据的下一个位置
 
 };
 

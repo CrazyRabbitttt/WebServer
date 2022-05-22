@@ -6,8 +6,8 @@ int http_conn::m_epollfd = -1;
 int http_conn::m_user_count = 0;
 
 
-// #define connfdET         //边缘触发模式
-#define connfdLT            //水平触发模式
+#define connfdET         //边缘触发模式
+// #define connfdLT            //水平触发模式
 
 // #define listenfdET
 #define listenfdLT          
@@ -95,10 +95,42 @@ void http_conn::close_conn(bool real_close) {
     }
 }
 
-//一次性读取数据
+
+//非阻塞ET模式下需要一次性将数据进行读取
+//循环读取客户的数据，直到没有数据可读或者是对方关闭了连接
 bool http_conn::read_once() { 
     printf("一次性读取完所有的数据！\n");
+    if (m_read_idx > READ_BUFFER_SIZE) return false;            //缓冲区已经是满了
+    int bytes_read = 0;
+
+#ifdef connfdLT
+    //进行数据的读取，读到read_buf中
+    bytes_read = recv(m_sockfd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx, 0);
+    m_read_idx += bytes_read;
+
+    if (bytes_read <= 0) {
+        return false;
+    } 
+    printf("读取到了数据:%s\n", m_read_buf);
     return true;
+#endif
+
+#ifdef connfdET
+    while(true) {
+        bytes_read = recv(m_sockfd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx, 0);
+        if (bytes_read == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)    //没有数据可以进行读取了
+                break;
+            return false;
+        }else if(bytes_read == 0) {
+            return false;
+        }
+        //下面是正确的读取完数据
+        m_read_idx += bytes_read;
+    }
+    printf("读取到了数据:%s\n", m_read_buf);
+    return true;
+#endif
 }
 
 //一次性写数据
