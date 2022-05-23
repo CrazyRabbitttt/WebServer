@@ -143,6 +143,8 @@ bool http_conn::write() {
 //线程池中的工作线程进行调用，处理http请求的函数的入口
 void http_conn::process() {
         //解析请求
+        // process_read();     
+
         printf("Parse request & create response\n");
         //生成响应
 }
