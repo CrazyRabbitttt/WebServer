@@ -78,6 +78,12 @@ private:
     int m_checked_idx;                  //已经解析了的位置
     int m_start_line;                   //解析行的开始位置，用于将数据拿出来嘛
 
+    METHOD m_method;                      //HTTP请求的method
+    char *m_url;                          //HTTP请求的url
+    char *m_version;                      //HTTP请求的版本，HTTP1.1
+    char *m_host;                         //HTTP请求的host
+    bool m_linger;                        //HTTP是否是keepalive
+
     char* get_line() {return m_read_buf + m_start_line; }      //获得解析好的语句的开始
 
     CHECK_STATE m_check_state;          //主状态机的状态

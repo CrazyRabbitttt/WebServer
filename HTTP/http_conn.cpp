@@ -106,6 +106,12 @@ void http_conn::init() {
     m_checked_idx = 0;
     m_read_idx = 0;
     m_start_line = 0;
+
+    m_method = GET;
+    m_url = 0;
+    m_version = 0;
+
+    bzero(m_read_buf, sizeof(m_read_buf));
 }
 
 //进行http客户端连接的关闭
@@ -244,22 +250,64 @@ http_conn::HTTP_CODE http_conn::process_read() {
 }
 
 //解析请求的首行
-http_conn::HTTP_CODE parse_request_line(char *text) {
+http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
+
+    //GET /index.html HTTP/1.1
+    m_url = strpbrk(text, " \t");       //获得到GET后面的那个位置
+    if (!m_url) {
+        return BAD_REQUEST;
+    }
+    *m_url++ = '\0';                    //GET\0/index.html HTTP/1.1
+    char *method = text;              //进行method的赋值
+
+    if (strcasecmp(method, "GET") == 0) 
+        m_method = GET;
+    else if (strcasecmp(method, "POST") == 0) 
+        m_method = POST;
+    else 
+        return BAD_REQUEST;
+
+
+    //目前是已经判断了第一个空格或者是\t,但是可能后面还是有空格，需要跳过空格
+    m_url += strspn(m_url, " \t");
+
+    //目前的url...
+    //是:/index.html HTTP1.1
+    m_version = strpbrk(m_url, " \t");
+    if(!m_version) 
+        return BAD_REQUEST;
+    *m_version++ = '\0';
+    if(strcasecmp(m_version, "HTTP/1.1") != 0) {
+        return BAD_REQUEST;
+    }
+
+    //判断前缀是否是http://
+    if(strncasecmp(m_url, "http://", 7) == 0) {
+        m_url += 7;
+        m_url = strchr(m_url, '/');             //索引到‘/’
+    }
+    if (!m_url || m_url[0] != '/') {
+        return BAD_REQUEST;
+    }
+
+    m_check_state = CHECK_STATEATE_HEADER;
+
+    return NO_REQUEST;
 
 }
 
 //解析请求首部
-http_conn::HTTP_CODE parse_headers(char *text) {
+http_conn::HTTP_CODE http_conn::parse_headers(char *text) {
 
 }
 
 //解析请求实体
-http_conn::HTTP_CODE parse_content(char *text) {
+http_conn::HTTP_CODE http_conn::parse_content(char *text) {
 
 }
 
 //具体的进行解析一行数据
-http_conn::LINE_STATUS parse_line() {
+http_conn::LINE_STATUS http_conn::parse_line() {
 
 }
 
