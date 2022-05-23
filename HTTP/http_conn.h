@@ -30,6 +30,7 @@ public:
     static const int WRITE_BUFFER_SIZE = 1024;      //写缓冲区的大小
 
     enum CHECK_STATE {CHECK_STATE_REQUESTLINE = 0, CHECK_STATEATE_HEADER, CHECK_STATE_CONTENT};
+    //从状态机的状态
     enum LINE_STATUS {LINE_OK = 0, LINE_BAD, LINE_OPEN};
     enum HTTP_CODE
     {
@@ -61,6 +62,7 @@ public:
     static int m_user_count;            //用户数量也同样是共享的
     // MYSQL *mysql;                   //用于connectionRAII时候传入进行初始化
 private:
+    void init();                                //进行类中字段的初始化
     HTTP_CODE process_read();                   //进行HTTP请求数据的读取, 解析？
     HTTP_CODE parse_request_line(char *text);   //解析请求首行
     HTTP_CODE parse_headers(char *text);        //解析请求头部
@@ -73,6 +75,14 @@ private:
     sockaddr_in m_address;              //进行通信的socket地址
     char m_read_buf[READ_BUFFER_SIZE];  //读缓冲区
     int m_read_idx;                     //当前已经读取的最后一个数据的下一个位置
+    int m_checked_idx;                  //已经解析了的位置
+    int m_start_line;                   //解析行的开始位置，用于将数据拿出来嘛
+
+    CHECK_STATE m_check_state;          //主状态机的状态
+
+    
+
+
 
 };
 

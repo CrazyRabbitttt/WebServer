@@ -12,6 +12,18 @@ int http_conn::m_user_count = 0;
 // #define listenfdET
 #define listenfdLT          
 
+//定义http响应的一些状态信息
+const char *ok_200_title = "OK";
+const char *error_400_title = "Bad Request";
+const char *error_400_form = "Your request has bad syntax or is inherently impossible to staisfy.\n";
+const char *error_403_title = "Forbidden";
+const char *error_403_form = "You do not have permission to get file form this server.\n";
+const char *error_404_title = "Not Found";
+const char *error_404_form = "The requested file was not found on this server.\n";
+const char *error_500_title = "Internal Error";
+const char *error_500_form = "There was an unusual problem serving the request file.\n";
+
+
 //设置fd为非阻塞，ET模式下必备
 int setnoblocking(int fd) {
     int old_option = fcntl(fd, F_GETFL);    
@@ -85,6 +97,15 @@ void http_conn::init(int sockfd, const sockaddr_in &client_addr) {
     //todo : 私有的init();
 }
 
+//初始化类内部的字段，idx字段啥的
+void http_conn::init() {
+
+    m_check_state = CHECK_STATE_REQUESTLINE;        //初始化主状态机为解析首部
+
+    m_checked_idx = 0;
+    m_read_idx = 0;
+    m_start_line = 0;
+}
 
 //进行http客户端连接的关闭
 void http_conn::close_conn(bool real_close) {
@@ -137,6 +158,41 @@ bool http_conn::read_once() {
 bool http_conn::write() {
     printf("一次性写完所有的数据\n");
     return true;
+}
+
+
+//主状态机：解析请求
+http_conn::HTTP_CODE http_conn::process_read() {
+    //初始化从状态机的状态
+    LINE_STATUS line_status = LINE_OK;
+    HTTP_CODE ret = NO_REQUEST;
+    char *text = 0;
+    
+    //解析行数据成功
+    while ((line_status = parse_line()) == LINE_OK) {
+
+    }
+
+}
+
+//解析请求的首行
+http_conn::HTTP_CODE parse_request_line(char *text) {
+
+}
+
+//解析请求首部
+http_conn::HTTP_CODE parse_headers(char *text) {
+
+}
+
+//解析请求实体
+http_conn::HTTP_CODE parse_content(char *text) {
+
+}
+
+//具体的进行解析一行数据
+http_conn::LINE_STATUS parse_line() {
+
 }
 
 
