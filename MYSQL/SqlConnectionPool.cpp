@@ -31,7 +31,9 @@ void connection_pool::init(string url, string User, string PassWord, string DbNa
             exit(1);
         }
         conn = mysql_real_connect(conn, url.c_str(), User.c_str(), PassWord.c_str(), DbName.c_str(), Port, NULL, 0);
-
+        
+        //debug 
+        printf("创建数据库连接：%d\n", i);
         if (conn = NULL) {
             cout << "Error: " << mysql_error(conn);
             exit(1);
@@ -45,6 +47,8 @@ void connection_pool::init(string url, string User, string PassWord, string DbNa
 
     this->MaxConn = FreeConn;
     lock.unlock();
+    //debug:
+    printf("数据库连接成功啊！\n");
 }
 
 

@@ -70,7 +70,7 @@ int main(int argc, char** argv)
     try {
         //尝试创建线程池,将http传给线程池进行处理。调用任务类的process()
         pool = new threadpool<http_conn>;       //change
-        printf("Calling 线程池...\n");
+        printf("Calling 线程池·...\n");
     } catch (...) {
         return 1;
     }
