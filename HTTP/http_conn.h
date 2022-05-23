@@ -31,7 +31,19 @@ public:
 
     enum CHECK_STATE {CHECK_STATE_REQUESTLINE = 0, CHECK_STATEATE_HEADER, CHECK_STATE_CONTENT};
     enum LINE_STATUS {LINE_OK = 0, LINE_BAD, LINE_OPEN};
-
+    enum HTTP_CODE
+    {
+        NO_REQUEST,     //请求不完整
+        GET_REQUEST,
+        BAD_REQUEST,
+        NO_RESOURCE,
+        FORBIDDEN_REQUEST,
+        FILE_REQUEST,
+        INTERNAL_ERROR,
+        CLOSED_CONNECTION
+    };
+    //HTTP请求方法
+    enum METHOD {GET = 0, POST, HEAD, PUT, DELETE, TRACE, OPTIONS, CONNECT,PATH};
 
 
     http_conn() {}
@@ -45,9 +57,16 @@ public:
 
 
 public:
-    static int m_epollfd;           //所有socket事件(http)都注册到同一个epoll对象,用静态变量就好了
-    static int m_user_count;        //用户数量也同样是共享的
+    static int m_epollfd;               //所有socket事件(http)都注册到同一个epoll对象,用静态变量就好了
+    static int m_user_count;            //用户数量也同样是共享的
     // MYSQL *mysql;                   //用于connectionRAII时候传入进行初始化
+private:
+    HTTP_CODE process_read();                   //进行HTTP请求数据的读取, 解析？
+    HTTP_CODE parse_request_line(char *text);   //解析请求首行
+    HTTP_CODE parse_headers(char *text);        //解析请求头部
+    HTTP_CODE parse_content(char *text);        //解析请求实体
+
+    LINE_STATUS parse_line();                   //解析行
 
 private:
     int m_sockfd;                       //http的socket

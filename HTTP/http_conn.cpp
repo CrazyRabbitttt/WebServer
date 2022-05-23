@@ -61,11 +61,11 @@ void modfd(int epollfd, int fd, int ev) {
     epoll_event event;      
     event.data.fd = fd;     //用户数据
 #ifdef connfdET
-    event.events = ev | EPOLLIN | EPOLLONESHOT | EPOLLRDHUP;
+    event.events = ev | EPOLLET | EPOLLONESHOT | EPOLLRDHUP;
 #endif
 
 #ifdef connfdLT
-    event.events = ev | EPOLLIN | EPOLLONESHOT | EPOLLRDHUP;
+    event.events = ev | EPOLLONESHOT | EPOLLRDHUP;
 #endif
 
     epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &event);
@@ -142,11 +142,15 @@ bool http_conn::write() {
 
 //线程池中的工作线程进行调用，处理http请求的函数的入口
 void http_conn::process() {
-        //解析请求
-        // process_read();     
+    //解析请求
+    HTTP_CODE read_ret = process_read();
+    if (read_ret == NO_REQUEST) {           //重置为oneshot事件，继续用同一个线程监听可读事件
+        modfd(m_epollfd, m_sockfd, EPOLLIN);
+        return ;
+    }
 
-        printf("Parse request & create response\n");
-        //生成响应
+    printf("Parse request & create response\n");
+    //生成响应
 }
 
 
