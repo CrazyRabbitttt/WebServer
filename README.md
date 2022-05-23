@@ -33,7 +33,19 @@
 
 `enum {LINE_OK, LINE_BAD, LINE_OPEN};`
 
+#### process_read的解析逻辑
 
+- 判断条件
+
+- - 主状态机转移到CHECK_STATE_CONTENT，该条件涉及解析消息体
+  - 从状态机转移到LINE_OK，该条件涉及解析请求行和请求头部
+  - 两者为或关系，当条件为真则继续循环，否则退出
+
+- 循环体
+
+- - 从状态机读取数据
+  - 调用get_line函数，通过m_start_line将从状态机读取数据间接赋给text
+  - 主状态机解析text
 
 
 #### main:读写流程

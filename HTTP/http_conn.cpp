@@ -95,6 +95,7 @@ void http_conn::init(int sockfd, const sockaddr_in &client_addr) {
     m_user_count++;                         //用户数量自➕
     
     //todo : 私有的init();
+    init();
 }
 
 //初始化类内部的字段，idx字段啥的
@@ -168,10 +169,46 @@ http_conn::HTTP_CODE http_conn::process_read() {
     HTTP_CODE ret = NO_REQUEST;
     char *text = 0;
     
-    //解析行数据成功
-    while ((line_status = parse_line()) == LINE_OK) {
+    //进入解析循环的条件一定是读取到了一个完整的整行，然后进行解析
+    //           开始进行解析主体，也就是不用一行行的进行解读了                             解析前面的头部等、成功的话
+    while (((m_check_state == CHECK_STATE_CONTENT)&&(line_status = LINE_OK))|| (line_status = parse_line()) == LINE_OK) {
+        //进入就是解析到了完整的数据或者是
+        text = get_line();          //将解析到的一行数据赋值给text
+
+        //因为现在已经是读取了一行数据了\r\n, 那么下一句的开始m_start_line就是m_checked_idx
+        m_start_line = m_checked_idx;   
+
+        printf("got one http line: %s\n", text);
+
+        switch (m_check_state) 
+        {
+            case CHECK_STATE_REQUESTLINE: {
+                ret = parse_request_line(text);         
+                if (ret = BAD_REQUEST) return BAD_REQUEST;          //客户端的数据有问题
+                break;
+            }
+            case CHECK_STATEATE_HEADER: {                           //解析头部字段
+                ret = parse_headers(text);
+                if (ret == BAD_REQUEST) return BAD_REQUEST;         
+                else if (ret == GET_REQUEST) {                      //获得了完整的客户请求
+                    return do_request();                            //进行处理
+                }
+                break;
+            }
+            case CHECK_STATE_CONTENT: {
+                ret = parse_content(text);
+                if (ret == GET_REQUEST) {                           //获得了完整的请求
+                    return do_request();                            //进行处理
+                }
+                line_status = LINE_OPEN;                            //读取完content就是读取完毕了，更新line_status避免再次进入循环
+                break;
+            }
+            default: 
+                return INTERNAL_ERROR;
+        }
 
     }
+    return NO_REQUEST;      //请求不完整，继续进行读取
 
 }
 
