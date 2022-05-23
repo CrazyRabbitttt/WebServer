@@ -28,6 +28,12 @@ class http_conn {
 public:
     static const int READ_BUFFER_SIZE = 2048;       //读缓冲区的大小
     static const int WRITE_BUFFER_SIZE = 1024;      //写缓冲区的大小
+
+    enum CHECK_STATE {CHECK_STATE_REQUESTLINE = 0, CHECK_STATEATE_HEADER, CHECK_STATE_CONTENT};
+    enum LINE_STATUS {LINE_OK = 0, LINE_BAD, LINE_OPEN};
+
+
+
     http_conn() {}
     ~http_conn() {}
     void init(int sockfd, const sockaddr_in &addr);     //init，传入connfd和客户端地址

@@ -15,6 +15,26 @@
 
 > 创建一个 **数据库连接的类**，通过`RAII`模式获得数据库的连接，这样就不必担心数据库连接的资源泄漏，和数据库连接池进行协同工作
 
+#### 状态机进行HTTP报文解析
+
+> **主状态机**：三种状态
+>
+> - 解析`requestline`
+> - 解析`header`
+> - 解析`content`
+
+`enum CHECK_STATE {CHECK_STATE_REQUESTLINE = 0, CHECK_STATEATE_HEADER, CHECK_STATE_CONTENT};`
+
+> **从状态机（解析具体的行）：**三种状态
+>
+> - 读取到完整的行成功`LINE_OK`
+> - 解析行出错`LINE_BAD`
+> - 行数据尚且不完整`LINE_OPEN`
+
+`enum {LINE_OK, LINE_BAD, LINE_OPEN};`
+
+
+
 
 #### main:读写流程
 
