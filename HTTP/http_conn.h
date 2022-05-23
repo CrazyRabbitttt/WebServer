@@ -67,7 +67,7 @@ private:
     HTTP_CODE parse_request_line(char *text);   //解析请求首行
     HTTP_CODE parse_headers(char *text);        //解析请求头部
     HTTP_CODE parse_content(char *text);        //解析请求实体
-
+    HTTP_CODE do_request();                     //读取到完整的数据行之后进行解析
     LINE_STATUS parse_line();                   //解析行
 
 private:

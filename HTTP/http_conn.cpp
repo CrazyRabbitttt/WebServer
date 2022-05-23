@@ -162,6 +162,37 @@ bool http_conn::write() {
 }
 
 
+//从状态机：用于分析出一行内容
+//返回值为Line的读取状态
+http_conn::LINE_STATUS http_conn::parse_line() {
+    char tmp;
+    //检查的不能追上读取了的
+    for (; m_checked_idx < m_read_idx; ++m_checked_idx) {
+        tmp = m_read_buf[m_checked_idx];
+        //下面就是进行判断是否是\r\n
+        if (tmp == '\r') {
+            if ((m_checked_idx + 1) == m_read_idx) {            //刚好就是最后读取到的就是\r,还没有读取到\n,那么就继续
+                return LINE_OPEN;                               //继续读
+            }else if (m_read_buf[m_checked_idx + 1] == '\n') {
+                //可以的，是\r\n
+                m_read_buf[m_checked_idx++] = '\0';
+                m_read_buf[m_checked_idx++] = '\0';
+                return LINE_OK;
+            }
+            return LINE_BAD;
+        }else if(tmp == '\n') {                       //就是上面讨论的特殊情况了
+            if(m_checked_idx > 0 && m_read_buf[m_checked_idx - 1] == '\r') {
+                m_read_buf[m_checked_idx - 1] = '\0';
+                m_read_buf[m_checked_idx++] = '\0';
+                return LINE_OK;
+            }
+            return LINE_BAD;                          //除了上面的情况，都是出错了
+        }       
+    }
+    return LINE_OPEN;                                 //需要继续进行数据行的解析
+}
+
+
 //主状态机：解析请求
 http_conn::HTTP_CODE http_conn::process_read() {
     //初始化从状态机的状态
