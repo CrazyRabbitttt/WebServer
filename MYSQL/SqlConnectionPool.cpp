@@ -13,18 +13,23 @@ connection_pool * connection_pool::GetInstance() {
     return &connPool;
 }
 
-void connection_pool::init(string url, string User, string PassWord, string DbName, int Port, unsigned int MaxCoon) {
+void connection_pool::init(string url, string User, string PassWord, string DbName, int Port, unsigned int MaxCoon1) {
     this->url   = url;
     this->Port  = Port;
     this->User  = User;
     this->PassWord = PassWord;
     this->DatabaseName = DbName; 
-
+    
+    int tmpConn = MaxCoon1;
+    printf("进行了线程池的初始化\n");
     lock.lock();
 
-    for (int i = 0; i < MaxConn; i++) {
+    printf("The maxconn:%d, this:%d\n", tmpConn, this->MaxConn);
+    for (int i = 0; i < tmpConn; i++) {
+        //debug 
+        printf("创建数据库连接：%d\n", i);
         MYSQL *conn = NULL;
-        conn = mysql_init(conn);
+        conn = mysql_init(conn);            
 
         if (conn == NULL) {
             cout << "Error:" << mysql_error(conn);
@@ -32,9 +37,8 @@ void connection_pool::init(string url, string User, string PassWord, string DbNa
         }
         conn = mysql_real_connect(conn, url.c_str(), User.c_str(), PassWord.c_str(), DbName.c_str(), Port, NULL, 0);
         
-        //debug 
-        printf("创建数据库连接：%d\n", i);
-        if (conn = NULL) {
+        
+        if (conn == NULL) {
             cout << "Error: " << mysql_error(conn);
             exit(1);
         }
@@ -48,7 +52,7 @@ void connection_pool::init(string url, string User, string PassWord, string DbNa
     this->MaxConn = FreeConn;
     lock.unlock();
     //debug:
-    printf("数据库连接成功啊！\n");
+    printf("数据库连接池创建成功啊！\n");
 }
 
 

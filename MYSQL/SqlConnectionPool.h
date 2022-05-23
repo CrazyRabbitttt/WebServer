@@ -34,7 +34,7 @@ private:
 
 private:
 	locker lock;			//Lock锁
-	list<MYSQL *> connList; //连接池
+	list<MYSQL*> connList; //连接池
 	sem reserve;			//信号量，用于设置可用的数量
 
 private:
