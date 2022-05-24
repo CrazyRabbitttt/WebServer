@@ -253,6 +253,12 @@ http_conn::HTTP_CODE http_conn::process_read() {
 
 }
 
+
+//主状态机：响应请求
+bool http_conn::process_write(HTTP_CODE code) {
+    
+}
+
 //解析请求的首行
 http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
 
@@ -399,6 +405,12 @@ void http_conn::process() {
 
     printf("Parse request & create response\n");
     //生成响应
+    bool write_ret = process_write(read_ret);
+    if (!write_ret) {
+        close_conn();       //不行就关闭连接
+    }
+    modfd(m_epollfd, m_sockfd, EPOLLOUT);       //操作完之后重新设置one_shot
+
 }
 
 
