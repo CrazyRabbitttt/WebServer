@@ -288,11 +288,38 @@ bool http_conn::process_write(HTTP_CODE ret) {
             break;
         }
         case FILE_REQUEST: {      //文件存在，200
+            add_status_line(200, ok_200_title);
+            if (m_file_stat.st_size != 0) {             //POST方法,将文件进行传输
+                add_headers(m_file_stat.st_size);
+                //第一个iovec指针指向响应报文缓冲区，长度指向m_write_idx
+                m_iv[0].iov_base = m_write_buf;
+                m_iv[0].iov_len  = m_write_idx;
+
+                //第二个iovec指针指向mmap返回的文件指针，长度指向文件的大小
+                m_iv[0].iov_base = m_file_address;          //mmap映射的文件
+                m_iv[0].iov_len  = m_file_stat.st_size;     //文件的size
+                m_iv_count = 2;
+
+                //发送的数据是响应报文头部信息和文件的大小
+                bytes_to_send = m_write_idx + m_file_stat.st_size;
+                return true; 
+
+            }else {
+                const char *ok_string = "<html><body></body></html>";
+                add_headers(strlen(ok_string));
+                if (!add_content(ok_string))
+                    return false;
+            }
             break;
         }
         default: 
             return false;
     }
+    m_iv[0].iov_base = m_write_buf;
+    m_iv[0].iov_len  = m_write_idx;
+    m_iv_count = 1;
+    bytes_to_send = m_write_idx;
+    return true;
 }
 
 //解析请求的首行

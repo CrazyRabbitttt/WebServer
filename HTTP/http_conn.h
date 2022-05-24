@@ -107,6 +107,11 @@ private:
     
     struct stat m_file_stat;                //需要访问的文件的状态
     char *m_file_address;                   //mmap, 文件到内存之间的映射
+    struct iovec m_iv[2];                   //,多元素数组：起始地址 + 数据的size
+    int m_iv_count;                         //iovec的数目
+    int bytes_to_send;                      //准备发送的字节数目
+    int bytes_have_send;                    //已经发送了的字节的数目
+
 
 };
 
