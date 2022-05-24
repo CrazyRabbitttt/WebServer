@@ -23,6 +23,8 @@ const char *error_404_form = "The requested file was not found on this server.\n
 const char *error_500_title = "Internal Error";
 const char *error_500_form = "There was an unusual problem serving the request file.\n";
 
+const char *doc_root = "/root/TinyWeb/resoures";
+
 
 //设置fd为非阻塞，ET模式下必备
 int setnoblocking(int fd) {
@@ -113,6 +115,8 @@ void http_conn::init() {
 
     bzero(m_read_buf, sizeof(m_read_buf));
 }
+
+
 
 //进行http客户端连接的关闭
 void http_conn::close_conn(bool real_close) {
@@ -206,7 +210,7 @@ http_conn::HTTP_CODE http_conn::process_read() {
     HTTP_CODE ret = NO_REQUEST;
     char *text = 0;
     
-    //进入解析循环的条件一定是读取到了一个完整的整行，然后进行解析
+    //进入解析循环的条件一定是读取到了一个完整的整行，然后进行解析，解析完成content之后改变line_status状态，退出循环
     //           开始进行解析主体，也就是不用一行行的进行解读了                             解析前面的头部等、成功的话
     while (((m_check_state == CHECK_STATE_CONTENT)&&(line_status = LINE_OK))|| (line_status = parse_line()) == LINE_OK) {
         //进入就是解析到了完整的数据或者是
@@ -253,7 +257,7 @@ http_conn::HTTP_CODE http_conn::process_read() {
 http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
 
     //GET /index.html HTTP/1.1
-    m_url = strpbrk(text, " \t");       //获得到GET后面的那个位置
+    m_url = strpbrk(text, " \t");       //获得到GET后面的那个位置，第一个空格出现的位置
     if (!m_url) {
         return BAD_REQUEST;
     }
@@ -264,12 +268,13 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
         m_method = GET;
     else if (strcasecmp(method, "POST") == 0) 
         m_method = POST;
+        //todo : cgi
     else 
         return BAD_REQUEST;
 
 
     //目前是已经判断了第一个空格或者是\t,但是可能后面还是有空格，需要跳过空格
-    m_url += strspn(m_url, " \t");
+    m_url += strspn(m_url, " \t");              //len = url中前面的空格数目
 
     //目前的url...
     //是:/index.html HTTP1.1
@@ -277,38 +282,109 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
     if(!m_version) 
         return BAD_REQUEST;
     *m_version++ = '\0';
+    m_version += strspn(m_version, " \t");
+    //  :/index.html\0   HTTP1.1
     if(strcasecmp(m_version, "HTTP/1.1") != 0) {
         return BAD_REQUEST;
     }
 
-    //判断前缀是否是http://
+    //判断前缀是否是http:// 
     if(strncasecmp(m_url, "http://", 7) == 0) {
         m_url += 7;
         m_url = strchr(m_url, '/');             //索引到‘/’
     }
+    //https://的情况
+    if (strncasecmp(m_url, "https://", 8) == 0) {
+        m_url += 8;
+        m_url = strchr(m_url, '/');
+    }
+
+
+    //一般是不会带有https://等前缀的，都是单独的/直接进行资源的访问
     if (!m_url || m_url[0] != '/') {
         return BAD_REQUEST;
     }
 
+    if(strlen(m_url) == 1)                      //如果说只是/，那么就显示我们的默认的欢迎界面
+        strcat(m_url, "default.html");      
     m_check_state = CHECK_STATEATE_HEADER;
-
     return NO_REQUEST;
-
 }
 
 //解析请求首部
 http_conn::HTTP_CODE http_conn::parse_headers(char *text) {
-
+    if (text[0] == '\0') {
+        if (m_content_length != 0) {
+            m_check_state = CHECK_STATE_CONTENT;
+            return NO_REQUEST;          //转到解析content
+        }
+        return GET_REQUEST;             //如果content为0， 那么就是GET请求
+    }else if (strncasecmp(text, "Connection:", 11) == 0) {
+        text += 11;
+        text += strspn(text, " \t");                    //去掉前置的空格
+        if (strcasecmp(text, "keep-alive") == 0) {      //长相连模式
+            m_linger = true;    
+        }
+    } else if (strncasecmp(text, "Content-length:", 15) == 0) {
+        text += 15;
+        text += strspn(text, " \t");
+        m_content_length = atol(text);
+    } else if (strncasecmp(text, "Host:", 5) == 0) {
+        text += 5;
+        text += strspn(text, " \t");
+        m_host = text;
+    } else {
+        printf("Unknown header : %s\n", text);
+    }
+    return NO_REQUEST;
 }
 
-//解析请求实体
+//解析请求实体,用于POST方法
 http_conn::HTTP_CODE http_conn::parse_content(char *text) {
-
+    if (m_read_idx >= (m_content_length + m_checked_idx))
+    {
+        text[m_content_length] = '\0';
+        //POST请求中最后为输入的用户名和密码
+        m_string = text;
+        return GET_REQUEST;
+    }
+    return NO_REQUEST;
 }
 
-//具体的进行解析一行数据
-http_conn::LINE_STATUS http_conn::parse_line() {
+//进行请求的具体的响应
+http_conn::HTTP_CODE http_conn::do_request() {
+    strcpy(m_real_file, doc_root);
+    int len = strlen(doc_root);
+    //进行资源路径的拼接
+    strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
 
+    //判断文件的状态
+    if (stat(m_real_file, &m_file_stat) < 0) {
+        return NO_RESOURCE;             //资源问题，没有资源
+    }   
+    //判断访问权限
+    if (!(m_file_stat.st_mode & S_IROTH)) {
+        return FORBIDDEN_REQUEST;       //禁止访问，权限不够
+    }
+
+    //判断是否是目录
+    if (S_ISDIR(m_file_stat.st_mode)) {
+        return BAD_REQUEST;             //访问的是目录而不是文件
+    }
+    //按照只读的方式打开文件
+    int fd = open(m_real_file, O_RDONLY);   
+    //创建文件和内存之间的映射,发送文件的时候就是用这个地址进行发送的
+    m_file_address = (char*)mmap(0, m_file_stat.st_size,PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    return FILE_REQUEST;
+}
+
+//进行内存映射的解除
+void http_conn::umap() {
+    if (m_file_address) {
+        munmap(m_file_address, m_file_stat.st_size);
+        m_file_address = 0;
+    }
 }
 
 

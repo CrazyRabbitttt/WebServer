@@ -26,6 +26,7 @@
 
 class http_conn {
 public:
+    static const int FILENAME_LEN = 200;               //文件名称的长度
     static const int READ_BUFFER_SIZE = 2048;       //读缓冲区的大小
     static const int WRITE_BUFFER_SIZE = 1024;      //写缓冲区的大小
 
@@ -63,6 +64,7 @@ public:
     // MYSQL *mysql;                   //用于connectionRAII时候传入进行初始化
 private:
     void init();                                //进行类中字段的初始化
+    void umap();                                //文件映射到内存的解
     HTTP_CODE process_read();                   //进行HTTP请求数据的读取, 解析？
     HTTP_CODE parse_request_line(char *text);   //解析请求首行
     HTTP_CODE parse_headers(char *text);        //解析请求头部
@@ -78,19 +80,22 @@ private:
     int m_checked_idx;                  //已经解析了的位置
     int m_start_line;                   //解析行的开始位置，用于将数据拿出来嘛
 
+    char m_real_file[FILENAME_LEN];     //用于存储真正的文件路径
+
     METHOD m_method;                      //HTTP请求的method
     char *m_url;                          //HTTP请求的url
     char *m_version;                      //HTTP请求的版本，HTTP1.1
     char *m_host;                         //HTTP请求的host
     bool m_linger;                        //HTTP是否是keepalive
 
+    char* m_string;                       //用于存储POST上传的用户名&密码
     char* get_line() {return m_read_buf + m_start_line; }      //获得解析好的语句的开始
 
-    CHECK_STATE m_check_state;          //主状态机的状态
-
+    CHECK_STATE m_check_state;              //主状态机的状态
+    int m_content_length;                  //content报文的长度
     
-
-
+    struct stat m_file_stat;                //需要访问的文件的状态
+    char *m_file_address;                   //mmap, 文件到内存之间的映射
 
 };
 
