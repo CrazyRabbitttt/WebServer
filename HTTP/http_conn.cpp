@@ -109,11 +109,15 @@ void http_conn::init() {
     m_read_idx = 0;
     m_start_line = 0;
 
+    m_write_idx = 0;
+    
     m_method = GET;
     m_url = 0;
     m_version = 0;
 
-    bzero(m_read_buf, sizeof(m_read_buf));
+    memset(m_read_buf, '\0', sizeof(READ_BUFFER_SIZE));
+    memset(m_write_buf, '\0', sizeof(WRITE_BUFFER_SIZE));
+    memset(m_real_file, '\0', FILENAME_LEN);
 }
 
 
@@ -254,9 +258,41 @@ http_conn::HTTP_CODE http_conn::process_read() {
 }
 
 
-//主状态机：响应请求
-bool http_conn::process_write(HTTP_CODE code) {
-    
+//主状态机：响应请求,根据解析到的读取报文进行逻辑判断
+bool http_conn::process_write(HTTP_CODE ret) {
+
+    //首先是status_line
+    //之后是headers,传入的是form的len，
+    //其中headers:  1.len  2. linger 3.blankline
+
+    switch(ret) {
+        case INTERNAL_ERROR: {      //内部错误，500
+            add_status_line(500, error_500_title);
+            add_headers(strlen(error_500_form));
+            if(!add_content(error_500_form)) 
+                return false;
+            break;
+        }
+        case BAD_REQUEST: {         //报文语法有错误，404
+            add_status_line(404, error_404_title);
+            add_headers(strlen(error_404_form));
+            if (!add_content(error_404_form)) 
+                return false;
+            break;
+        }
+        case FORBIDDEN_REQUEST: { //资源访问没有权限，403
+            add_status_line(403, error_403_title);
+            add_headers(strlen(error_403_form));
+            if (!add_content(error_403_form)) 
+                return false;   
+            break;
+        }
+        case FILE_REQUEST: {      //文件存在，200
+            break;
+        }
+        default: 
+            return false;
+    }
 }
 
 //解析请求的首行
@@ -393,6 +429,71 @@ void http_conn::umap() {
     }
 }
 
+//通过可变参数列表进行数据的写入 -> m_write_buf
+bool http_conn::add_response(const char *format, ...) {
+    if(m_write_idx >= WRITE_BUFFER_SIZE)        //如果超出了缓冲区的大小就是false
+        return false;
+
+    //可变参数列表
+    va_list arg_list;
+
+    //将变量arg_list初始化为传入参数
+    va_start(arg_list, format);
+
+    //将数据format从可变参数列表写入缓冲区，返回写入的长度
+    int len = vsnprintf(m_write_buf + m_write_idx, WRITE_BUFFER_SIZE - 1 - m_write_idx, format, arg_list);
+
+    //如果写入的数据长度超过缓冲区剩余空间，就报错
+    if (len > (WRITE_BUFFER_SIZE - 1 - m_write_idx)) {
+        va_end(arg_list);
+        return false;
+    }
+
+    //更新m_write_idx的位置
+    m_write_idx += len; 
+    //清空可变参数列表
+    va_end(arg_list);
+    return true;
+}
+
+
+//响应报文中添加首部状态行
+bool http_conn::add_status_line(int status, const char* title) {
+    return add_response("%s %s %s\r\n", "HTTP/1.1", status, title); 
+}
+
+
+//向响应报文中添加头部字段
+bool http_conn::add_headers(int content_length) {
+    add_content_length(content_length);         //头部首先写长度
+    add_linger();                               //是否是长连接
+    add_blank_line();                           //添加空行
+}
+
+//添加content的长度
+bool http_conn::add_content_length(int content_len) {
+    return add_response("Content-Length:%d\r\n", content_len);  
+}
+
+//content文本的类型：html
+bool http_conn::add_content_type() {
+    return add_response("Content-Type:%s\r\n", "text/html");
+}
+
+//是否是长连接
+bool http_conn::add_linger() {
+    return add_response("Connection:%s\r\n", (m_linger == true) ? "keep-alive" : "close");
+}
+
+//写一个空行进去
+bool http_conn::add_blank_line() {
+    return add_response("%s", "\r\n");
+}
+
+//添加文本content,就是状态行对应的文本信息
+bool http_conn::add_content(const char *content) {
+    return add_response("%s", content);
+}
 
 //线程池中的工作线程进行调用，处理http请求的函数的入口
 void http_conn::process() {

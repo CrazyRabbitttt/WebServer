@@ -55,8 +55,7 @@ public:
     void close_conn(bool real_close = true);            //进行客户端的连接关闭 
     bool read_once();                                   //非阻塞的读取，读数据的主入口
     bool write();                                       //向连接中写数据
-
-
+    
 
 public:
     static int m_epollfd;               //所有socket事件(http)都注册到同一个epoll对象,用静态变量就好了
@@ -73,9 +72,20 @@ private:
     HTTP_CODE do_request();                     //读取到完整的数据行之后进行解析
     LINE_STATUS parse_line();                   //解析行
 
+    bool add_response(const char* format, ...);             //接收可变参数进行Response  shuxie 
+    bool add_content(const char* content);                  //向响应报文中写content
+    bool add_status_line(int status, const char * title);   //添加状态行到响应报文中
+    bool add_headers(int content_length);                   //content长度
+    bool add_content_length(int content_length);            //添加响应的长度到响应报文中
+    bool add_linger();                                      //是否是长连接
+    bool add_blank_line();                                  //添加空行
+    bool add_content_type();                                //类型
+
 private:
     int m_sockfd;                       //http的socket
     sockaddr_in m_address;              //进行通信的socket地址
+    char m_write_buf[WRITE_BUFFER_SIZE];//写缓冲区         
+    int m_write_idx;                    //写到缓冲区中的位置指针
     char m_read_buf[READ_BUFFER_SIZE];  //读缓冲区
     int m_read_idx;                     //当前已经读取的最后一个数据的下一个位置
     int m_checked_idx;                  //已经解析了的位置
