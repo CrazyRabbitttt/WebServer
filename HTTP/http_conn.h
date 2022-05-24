@@ -63,7 +63,7 @@ public:
     // MYSQL *mysql;                   //用于connectionRAII时候传入进行初始化
 private:
     void init();                                //进行类中字段的初始化
-    void umap();                                //文件映射到内存的解
+    void unmap();                                //文件映射到内存的解
     bool process_write(HTTP_CODE ret);          //进行响应，根据process_read解析的结果进行响应
     HTTP_CODE process_read();                   //进行HTTP请求数据的读取, 解析？
     HTTP_CODE parse_request_line(char *text);   //解析请求首行

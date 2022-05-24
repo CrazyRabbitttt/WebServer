@@ -121,6 +121,13 @@ void http_conn::init() {
 }
 
 
+//进行文件和内存之间映射的解除
+void http_conn::unmap() {
+    if (m_file_address) {       //目前是存在映射关系的
+        munmap(m_file_address, m_file_stat.st_size);
+        m_file_address = 0;
+    }
+}
 
 //进行http客户端连接的关闭
 void http_conn::close_conn(bool real_close) {
@@ -169,11 +176,109 @@ bool http_conn::read_once() {
 #endif
 }
 
-//一次性写数据
+
+
+//调用process_write然后注册epollout事件进行驱动，服务器主线程进行检测，调用write 
+//一次性写数据,进行数据的写操作
+bool http_conn::write()
+{
+    int temp = 0;
+
+    if (bytes_to_send == 0)
+    {
+        modfd(m_epollfd, m_sockfd, EPOLLIN);
+        init();
+        return true;
+    }
+
+    while (1)
+    {
+        temp = writev(m_sockfd, m_iv, m_iv_count);
+
+        if (temp < 0)
+        {
+            if (errno == EAGAIN)
+            {
+                modfd(m_epollfd, m_sockfd, EPOLLOUT);
+                return true;
+            }
+            unmap();
+            return false;
+        }
+
+        bytes_have_send += temp;
+        bytes_to_send -= temp;
+        if (bytes_have_send >= m_iv[0].iov_len)
+        {
+            m_iv[0].iov_len = 0;
+            m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_idx);
+            m_iv[1].iov_len = bytes_to_send;
+        }
+        else
+        {
+            m_iv[0].iov_base = m_write_buf + bytes_have_send;
+            m_iv[0].iov_len = m_iv[0].iov_len - bytes_have_send;
+        }
+
+        if (bytes_to_send <= 0)
+        {
+            unmap();
+            modfd(m_epollfd, m_sockfd, EPOLLIN);
+
+            if (m_linger)
+            {
+                init();
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+    }
+}
+
+
+/*
+
+//调用process_write然后注册epollout事件进行驱动，服务器主线程进行检测，调用write 
+//一次性写数据,进行数据的写操作
 bool http_conn::write() {
     printf("一次性写完所有的数据\n");
+    int tmp = 0;
+
+    if (bytes_to_send == 0) {       //待发送的数据是空的，响应报文是空的，一般是不会出现
+        modfd(m_epollfd, m_sockfd, EPOLLIN);
+        init();
+        return true;
+    }
+
+    while (1) {
+        //将响应报文的状态行，消息头，空行和响应征文发给浏览器
+        tmp = writev(m_sockfd, m_iv, m_iv_count);           //进行聚集写，将多处的内容发送个客户端
+
+        //正常发送
+        if (tmp < 0) {
+            if (errno == EAGAIN) {
+                modfd(m_epollfd, m_sockfd, EPOLLOUT);       //注册写事件，驱动主线程进行数据的写
+                return true;
+            }
+            unmap();                                        //解除映射
+            return false;
+        }   
+
+        bytes_have_send += tmp;                             //已经发送的数据
+        bytes_to_send -= tmp;                               //需要发送的数据减少
+
+        if (bytes_have_send >= m_iv[0].iov_len) {
+
+        }
+
+    }
+
     return true;
 }
+*/
 
 
 //从状态机：用于分析出一行内容
@@ -449,7 +554,7 @@ http_conn::HTTP_CODE http_conn::do_request() {
 }
 
 //进行内存映射的解除
-void http_conn::umap() {
+void http_conn::unmap() {
     if (m_file_address) {
         munmap(m_file_address, m_file_stat.st_size);
         m_file_address = 0;
