@@ -121,13 +121,7 @@ void http_conn::init() {
 }
 
 
-//进行文件和内存之间映射的解除
-void http_conn::unmap() {
-    if (m_file_address) {       //目前是存在映射关系的
-        munmap(m_file_address, m_file_stat.st_size);
-        m_file_address = 0;
-    }
-}
+
 
 //进行http客户端连接的关闭
 void http_conn::close_conn(bool real_close) {
