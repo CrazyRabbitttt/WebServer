@@ -149,7 +149,7 @@ void http_conn::close_conn(bool real_close) {
 //循环读取客户的数据，直到没有数据可读或者是对方关闭了连接
 bool http_conn::read_once() { 
     // printf("一次性读取完所有的数据！\n");
-    if (m_read_idx > READ_BUFFER_SIZE) return false;            //缓冲区已经是满了
+    if (m_read_idx >= READ_BUFFER_SIZE) return false;            //缓冲区已经是满了
     int bytes_read = 0;
 
 #ifdef connfdLT
@@ -177,7 +177,6 @@ bool http_conn::read_once() {
         //下面是正确的读取完数据
         m_read_idx += bytes_read;
     }
-    printf("ET:读取到了数据:%s\n", m_read_buf);
     return true;
 #endif
 }
@@ -296,13 +295,11 @@ http_conn::HTTP_CODE http_conn::process_read() {
         switch (m_check_state) 
         {
             case CHECK_STATE_REQUESTLINE: {
-                // printf("主状态机状态：REQUEST\n");
                 ret = parse_request_line(text);         
-                if (ret = BAD_REQUEST) return BAD_REQUEST;          //客户端的数据有问题
+                if (ret == BAD_REQUEST) return BAD_REQUEST;          //客户端的数据有问题
                 break;
             }
             case CHECK_STATEATE_HEADER: {                           //解析头部字段
-                printf("主状态机状态：HEADER\n");
                 ret = parse_headers(text);
                 if (ret == BAD_REQUEST) return BAD_REQUEST;         
                 else if (ret == GET_REQUEST) {                      //获得了完整的客户请求
@@ -311,7 +308,6 @@ http_conn::HTTP_CODE http_conn::process_read() {
                 break;
             }
             case CHECK_STATE_CONTENT: {
-                printf("主状态机状态：Content\n");
                 ret = parse_content(text);
                 if (ret == GET_REQUEST) {                           //获得了完整的请求
                     return do_request();                            //进行处理
