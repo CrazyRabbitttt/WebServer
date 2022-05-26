@@ -54,7 +54,7 @@ int main(int argc, char** argv)
     // }
     
     // const char * ip = argv[1];
-    int port = atoi(argv[1]);
+    int port = 9090;
 
     //对于SIGPIE信号进行处理
 
@@ -163,9 +163,10 @@ int main(int argc, char** argv)
                 if(users[sockfd].read_once()) {
                     //一次性将所有的数据进行读取完毕
                     //将http_conn传到线程池上，工作线程进行连接的处理
+                    // printf("数据读取成功，开始添加到线程池处理\n");
                     pool->append(users + sockfd);
-                    printf("暂时停止处理，检查是否读到\n");
                 }else {     //读取数据失败
+                    printf("read_once()读取失败,main :169\n");
                     users[sockfd].close_conn();         //进行http连接的关闭
                 }
             } else if (events[i].events & EPOLLOUT) {                               //数据可以进行写操作

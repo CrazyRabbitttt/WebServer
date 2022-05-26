@@ -90,9 +90,9 @@ void http_conn::init(int sockfd, const sockaddr_in &client_addr) {
     m_sockfd  = sockfd;
     m_address = client_addr;
 
-    int reuse = 1;
+    // int reuse = 1;
     //设置端口复用
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    // setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
     addfd(m_epollfd, sockfd, true);         //添加事件，将这个conn连接添加到epoll
     m_user_count++;                         //用户数量自➕
     
@@ -105,6 +105,12 @@ void http_conn::init() {
 
     m_check_state = CHECK_STATE_REQUESTLINE;        //初始化主状态机为解析首部
 
+    bytes_have_send = 0;
+    bytes_to_send = 0;
+
+    m_linger = false;
+
+
     m_checked_idx = 0;
     m_read_idx = 0;
     m_start_line = 0;
@@ -114,6 +120,12 @@ void http_conn::init() {
     m_method = GET;
     m_url = 0;
     m_version = 0;
+
+    m_content_length = 0;
+
+
+    m_host = 0;
+
 
     memset(m_read_buf, '\0', sizeof(READ_BUFFER_SIZE));
     memset(m_write_buf, '\0', sizeof(WRITE_BUFFER_SIZE));
@@ -136,7 +148,7 @@ void http_conn::close_conn(bool real_close) {
 //非阻塞ET模式下需要一次性将数据进行读取
 //循环读取客户的数据，直到没有数据可读或者是对方关闭了连接
 bool http_conn::read_once() { 
-    printf("一次性读取完所有的数据！\n");
+    // printf("一次性读取完所有的数据！\n");
     if (m_read_idx > READ_BUFFER_SIZE) return false;            //缓冲区已经是满了
     int bytes_read = 0;
 
@@ -322,16 +334,18 @@ http_conn::HTTP_CODE http_conn::process_read() {
         //因为现在已经是读取了一行数据了\r\n, 那么下一句的开始m_start_line就是m_checked_idx
         m_start_line = m_checked_idx;   
 
-        printf("got one http line: %s\n", text);
+        // printf("got one http line: %s,end with r,n :http.cpp:325\n", text);
 
         switch (m_check_state) 
         {
             case CHECK_STATE_REQUESTLINE: {
+                // printf("主状态机状态：REQUEST\n");
                 ret = parse_request_line(text);         
                 if (ret = BAD_REQUEST) return BAD_REQUEST;          //客户端的数据有问题
                 break;
             }
             case CHECK_STATEATE_HEADER: {                           //解析头部字段
+                printf("主状态机状态：HEADER\n");
                 ret = parse_headers(text);
                 if (ret == BAD_REQUEST) return BAD_REQUEST;         
                 else if (ret == GET_REQUEST) {                      //获得了完整的客户请求
@@ -340,6 +354,7 @@ http_conn::HTTP_CODE http_conn::process_read() {
                 break;
             }
             case CHECK_STATE_CONTENT: {
+                printf("主状态机状态：Content\n");
                 ret = parse_content(text);
                 if (ret == GET_REQUEST) {                           //获得了完整的请求
                     return do_request();                            //进行处理
@@ -364,6 +379,7 @@ bool http_conn::process_write(HTTP_CODE ret) {
     //之后是headers,传入的是form的len，
     //其中headers:  1.len  2. linger 3.blankline
 
+    printf("The HTTPcode pro_write got :%d\n", ret);
     switch(ret) {
         case INTERNAL_ERROR: {      //内部错误，500
             add_status_line(500, error_500_title);
@@ -373,8 +389,12 @@ bool http_conn::process_write(HTTP_CODE ret) {
             break;
         }
         case BAD_REQUEST: {         //报文语法有错误，404
+            // printf("报文语法有错误\n");
+            // printf("开始执行加入状态行\n");
             add_status_line(404, error_404_title);
+            cout << "到达加入headers\n";
             add_headers(strlen(error_404_form));
+            cout << "加入头部结束\n";
             if (!add_content(error_404_form)) 
                 return false;
             break;
@@ -427,6 +447,7 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
     //GET /index.html HTTP/1.1
     m_url = strpbrk(text, " \t");       //获得到GET后面的那个位置，第一个空格出现的位置
     if (!m_url) {
+        printf("异常退出，http.cpp:433\n");
         return BAD_REQUEST;
     }
     *m_url++ = '\0';                    //GET\0/index.html HTTP/1.1
@@ -437,8 +458,11 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
     else if (strcasecmp(method, "POST") == 0) 
         m_method = POST;
         //todo : cgi
-    else 
+    else {
+        printf("http.cpp:447\n");
         return BAD_REQUEST;
+    }
+        
 
 
     //目前是已经判断了第一个空格或者是\t,但是可能后面还是有空格，需要跳过空格
@@ -447,12 +471,18 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
     //目前的url...
     //是:/index.html HTTP1.1
     m_version = strpbrk(m_url, " \t");
-    if(!m_version) 
+    if(!m_version) {
+        cout << "460!!!!\n";
         return BAD_REQUEST;
+    }
+        
     *m_version++ = '\0';
     m_version += strspn(m_version, " \t");
+    cout << "The Version we got :" ;
+    printf("%s\n", m_version);
     //  :/index.html\0   HTTP1.1
     if(strcasecmp(m_version, "HTTP/1.1") != 0) {
+        cout << "470!!!\n";
         return BAD_REQUEST;
     }
 
@@ -470,6 +500,7 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
 
     //一般是不会带有https://等前缀的，都是单独的/直接进行资源的访问
     if (!m_url || m_url[0] != '/') {
+        cout << "http.cpp:481\n";
         return BAD_REQUEST;
     }
 
@@ -556,36 +587,30 @@ void http_conn::unmap() {
 }
 
 //通过可变参数列表进行数据的写入 -> m_write_buf
-bool http_conn::add_response(const char *format, ...) {
-    if(m_write_idx >= WRITE_BUFFER_SIZE)        //如果超出了缓冲区的大小就是false
+bool http_conn::add_response(const char *format, ...)
+{
+    if (m_write_idx >= WRITE_BUFFER_SIZE)
         return false;
-
-    //可变参数列表
     va_list arg_list;
-
-    //将变量arg_list初始化为传入参数
     va_start(arg_list, format);
-
-    //将数据format从可变参数列表写入缓冲区，返回写入的长度
     int len = vsnprintf(m_write_buf + m_write_idx, WRITE_BUFFER_SIZE - 1 - m_write_idx, format, arg_list);
+    if (len >= (WRITE_BUFFER_SIZE - 1 - m_write_idx))
+    {
 
-    //如果写入的数据长度超过缓冲区剩余空间，就报错
-    if (len > (WRITE_BUFFER_SIZE - 1 - m_write_idx)) {
         va_end(arg_list);
         return false;
     }
-
-    //更新m_write_idx的位置
-    m_write_idx += len; 
-    //清空可变参数列表
+    m_write_idx += len;
     va_end(arg_list);
+    printf("request:%s", m_write_buf);
     return true;
 }
 
 
 //响应报文中添加首部状态行
 bool http_conn::add_status_line(int status, const char* title) {
-    return add_response("%s %s %s\r\n", "HTTP/1.1", status, title); 
+    // printf("进入add status\n");
+    return add_response("%s %d %s\r\n", "HTTP/1.1", status, title); 
 }
 
 
@@ -630,7 +655,7 @@ void http_conn::process() {
         return ;
     }
 
-    printf("Parse request & create response\n");
+    printf("Finish process_read(), now run process_write()\n");
     //生成响应
     bool write_ret = process_write(read_ret);
     if (!write_ret) {

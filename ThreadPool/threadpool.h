@@ -102,7 +102,7 @@ bool threadpool<T>::append(T *request)
 
 
 template<typename T>
-void * threadpool<T>::worker(void *arg) {
+void * threadpool<T>::worker(void *arg) {               //创建线程即调用worker函数进行等待操作任务进行处理操作
     //函数调用传入的参数是  this， 也就是线程池对象被传进来了
     //返回类型是void *, 传进来的参数(线程池对象)
     threadpool* pool = (threadpool*)arg;    //强转为pool
