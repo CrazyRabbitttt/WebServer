@@ -48,13 +48,12 @@ void addsig(int sig, void(handler)(int)) {
 
 int main(int argc, char** argv)
 {
-    // if (argc <= 1) {
-    //    printf("Usage: %s port_number\n", basename(argv[0]));
-    //    exit(-1);
-    // }
+    if (argc <= 1) {
+       printf("Usage: %s port_number\n", basename(argv[0]));
+       exit(-1);
+    }
     
-    // const char * ip = argv[1];
-    int port = 9090;
+    int port = atoi(argv[1]);
 
     //对于SIGPIE信号进行处理
 

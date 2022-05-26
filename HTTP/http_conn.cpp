@@ -160,7 +160,7 @@ bool http_conn::read_once() {
     if (bytes_read <= 0) {
         return false;
     } 
-    printf("读取到了数据:%s\n", m_read_buf);
+    printf("LT:读取到了数据:%s\n", m_read_buf);
     return true;
 #endif
 
@@ -170,14 +170,14 @@ bool http_conn::read_once() {
         if (bytes_read == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)    //没有数据可以进行读取了
                 break;
-            return false;
+            return false;//如果不是上述的话就return false
         }else if(bytes_read == 0) {
             return false;
         }
         //下面是正确的读取完数据
         m_read_idx += bytes_read;
     }
-    printf("读取到了数据:%s\n", m_read_buf);
+    printf("ET:读取到了数据:%s\n", m_read_buf);
     return true;
 #endif
 }
@@ -192,7 +192,7 @@ bool http_conn::write()
 
     if (bytes_to_send == 0)
     {
-        modfd(m_epollfd, m_sockfd, EPOLLIN);
+        modfd(m_epollfd, m_sockfd, EPOLLIN);            //没东西可写，继续读
         init();
         return true;
     }
@@ -245,47 +245,6 @@ bool http_conn::write()
 }
 
 
-/*
-
-//调用process_write然后注册epollout事件进行驱动，服务器主线程进行检测，调用write 
-//一次性写数据,进行数据的写操作
-bool http_conn::write() {
-    printf("一次性写完所有的数据\n");
-    int tmp = 0;
-
-    if (bytes_to_send == 0) {       //待发送的数据是空的，响应报文是空的，一般是不会出现
-        modfd(m_epollfd, m_sockfd, EPOLLIN);
-        init();
-        return true;
-    }
-
-    while (1) {
-        //将响应报文的状态行，消息头，空行和响应征文发给浏览器
-        tmp = writev(m_sockfd, m_iv, m_iv_count);           //进行聚集写，将多处的内容发送个客户端
-
-        //正常发送
-        if (tmp < 0) {
-            if (errno == EAGAIN) {
-                modfd(m_epollfd, m_sockfd, EPOLLOUT);       //注册写事件，驱动主线程进行数据的写
-                return true;
-            }
-            unmap();                                        //解除映射
-            return false;
-        }   
-
-        bytes_have_send += tmp;                             //已经发送的数据
-        bytes_to_send -= tmp;                               //需要发送的数据减少
-
-        if (bytes_have_send >= m_iv[0].iov_len) {
-
-        }
-
-    }
-
-    return true;
-}
-*/
-
 
 //从状态机：用于分析出一行内容
 //返回值为Line的读取状态
@@ -306,7 +265,7 @@ http_conn::LINE_STATUS http_conn::parse_line() {
             }
             return LINE_BAD;
         }else if(tmp == '\n') {                       //就是上面讨论的特殊情况了
-            if(m_checked_idx > 0 && m_read_buf[m_checked_idx - 1] == '\r') {
+            if(m_checked_idx > 1 && m_read_buf[m_checked_idx - 1] == '\r') {
                 m_read_buf[m_checked_idx - 1] = '\0';
                 m_read_buf[m_checked_idx++] = '\0';
                 return LINE_OK;
@@ -327,14 +286,12 @@ http_conn::HTTP_CODE http_conn::process_read() {
     
     //进入解析循环的条件一定是读取到了一个完整的整行，然后进行解析，解析完成content之后改变line_status状态，退出循环
     //           开始进行解析主体，也就是不用一行行的进行解读了                             解析前面的头部等、成功的话
-    while (((m_check_state == CHECK_STATE_CONTENT)&&(line_status = LINE_OK))|| (line_status = parse_line()) == LINE_OK) {
+    while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK)|| ((line_status = parse_line()) == LINE_OK)) {
         //进入就是解析到了完整的数据或者是
         text = get_line();          //将解析到的一行数据赋值给text
 
         //因为现在已经是读取了一行数据了\r\n, 那么下一句的开始m_start_line就是m_checked_idx
         m_start_line = m_checked_idx;   
-
-        // printf("got one http line: %s,end with r,n :http.cpp:325\n", text);
 
         switch (m_check_state) 
         {
@@ -392,9 +349,7 @@ bool http_conn::process_write(HTTP_CODE ret) {
             // printf("报文语法有错误\n");
             // printf("开始执行加入状态行\n");
             add_status_line(404, error_404_title);
-            cout << "到达加入headers\n";
             add_headers(strlen(error_404_form));
-            cout << "加入头部结束\n";
             if (!add_content(error_404_form)) 
                 return false;
             break;
@@ -424,16 +379,17 @@ bool http_conn::process_write(HTTP_CODE ret) {
                 return true; 
 
             }else {
-                const char *ok_string = "<html><body></body></html>";
+                const char *ok_string = "<html><body>空白</body></html>";
                 add_headers(strlen(ok_string));
                 if (!add_content(ok_string))
                     return false;
             }
-            break;
         }
         default: 
             return false;
     }
+
+    //其余的状态只是写响应报文，没有映射到文件的发送
     m_iv[0].iov_base = m_write_buf;
     m_iv[0].iov_len  = m_write_idx;
     m_iv_count = 1;
@@ -447,7 +403,7 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
     //GET /index.html HTTP/1.1
     m_url = strpbrk(text, " \t");       //获得到GET后面的那个位置，第一个空格出现的位置
     if (!m_url) {
-        printf("异常退出，http.cpp:433\n");
+        printf("请求行中没有空行,BAD_Request,http.cpp:433!!!\n");
         return BAD_REQUEST;
     }
     *m_url++ = '\0';                    //GET\0/index.html HTTP/1.1
@@ -459,7 +415,7 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
         m_method = POST;
         //todo : cgi
     else {
-        printf("http.cpp:447\n");
+        printf("请求行中Method方法不是GET、POST!!\n");
         return BAD_REQUEST;
     }
         
@@ -472,7 +428,7 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
     //是:/index.html HTTP1.1
     m_version = strpbrk(m_url, " \t");
     if(!m_version) {
-        cout << "460!!!!\n";
+        cout << "请求行中资源、版本间没有空行\n";
         return BAD_REQUEST;
     }
         
@@ -482,7 +438,7 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
     printf("%s\n", m_version);
     //  :/index.html\0   HTTP1.1
     if(strcasecmp(m_version, "HTTP/1.1") != 0) {
-        cout << "470!!!\n";
+        cout << "HTTP版本输入不正确\n";
         return BAD_REQUEST;
     }
 
@@ -500,12 +456,12 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
 
     //一般是不会带有https://等前缀的，都是单独的/直接进行资源的访问
     if (!m_url || m_url[0] != '/') {
-        cout << "http.cpp:481\n";
         return BAD_REQUEST;
     }
 
+    //url为/，显示默认界面
     if(strlen(m_url) == 1)                      //如果说只是/，那么就显示我们的默认的欢迎界面
-        strcat(m_url, "default.html");      
+        strcat(m_url, "index.html");      
     m_check_state = CHECK_STATEATE_HEADER;
     return NO_REQUEST;
 }
@@ -554,7 +510,9 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text) {
 http_conn::HTTP_CODE http_conn::do_request() {
     strcpy(m_real_file, doc_root);
     int len = strlen(doc_root);
-    //进行资源路径的拼接
+
+
+    //进行资源路径的拼接,目前只是处理回弹index.html的功能
     strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
 
     //判断文件的状态
@@ -566,11 +524,11 @@ http_conn::HTTP_CODE http_conn::do_request() {
         return FORBIDDEN_REQUEST;       //禁止访问，权限不够
     }
 
-    //判断是否是目录
-    if (S_ISDIR(m_file_stat.st_mode)) {
-        return BAD_REQUEST;             //访问的是目录而不是文件
+    //判断是否是目录，是目录就代表出错
+    if(S_ISDIR(m_file_stat.st_mode)) {
+        return BAD_REQUEST;
     }
-    //按照只读的方式打开文件
+    //按照只读的方式打开文件,将文件进行mmap内存的映射，mmap + write实现零拷贝
     int fd = open(m_real_file, O_RDONLY);   
     //创建文件和内存之间的映射,发送文件的时候就是用这个地址进行发送的
     m_file_address = (char*)mmap(0, m_file_stat.st_size,PROT_READ, MAP_PRIVATE, fd, 0);
@@ -589,27 +547,37 @@ void http_conn::unmap() {
 //通过可变参数列表进行数据的写入 -> m_write_buf
 bool http_conn::add_response(const char *format, ...)
 {
+    //如果写入的内容超出了write_buf的大小
     if (m_write_idx >= WRITE_BUFFER_SIZE)
         return false;
-    va_list arg_list;
-    va_start(arg_list, format);
-    int len = vsnprintf(m_write_buf + m_write_idx, WRITE_BUFFER_SIZE - 1 - m_write_idx, format, arg_list);
-    if (len >= (WRITE_BUFFER_SIZE - 1 - m_write_idx))
-    {
 
+    //可变参数列表
+    va_list arg_list;
+
+    //将变量arg_list初始化为传入的参数
+    va_start(arg_list, format);
+
+    //将可变参数列表写入缓冲区
+    int len = vsnprintf(m_write_buf + m_write_idx, WRITE_BUFFER_SIZE - 1 - m_write_idx, format, arg_list);
+    
+    
+    //如果写入的数据长度超过缓冲区，baocuo
+    if (len >= (WRITE_BUFFER_SIZE-1-m_write_idx)) {
         va_end(arg_list);
         return false;
     }
+
+    //更新m_write_idx
     m_write_idx += len;
     va_end(arg_list);
-    printf("request:%s", m_write_buf);
+
+    printf("写入缓冲区:%s", m_write_buf);
     return true;
 }
 
 
 //响应报文中添加首部状态行
 bool http_conn::add_status_line(int status, const char* title) {
-    // printf("进入add status\n");
     return add_response("%s %d %s\r\n", "HTTP/1.1", status, title); 
 }
 
@@ -650,7 +618,7 @@ bool http_conn::add_content(const char *content) {
 void http_conn::process() {
     //解析请求
     HTTP_CODE read_ret = process_read();
-    if (read_ret == NO_REQUEST) {           //重置为oneshot事件，继续用同一个线程监听可读事件
+    if (read_ret == NO_REQUEST) {           //报文不完整，重置为oneshot事件，继续用同一个线程监听读事件
         modfd(m_epollfd, m_sockfd, EPOLLIN);
         return ;
     }
@@ -661,8 +629,7 @@ void http_conn::process() {
     if (!write_ret) {
         close_conn();       //不行就关闭连接
     }
-    modfd(m_epollfd, m_sockfd, EPOLLOUT);       //操作完之后重新设置one_shot
-
+    modfd(m_epollfd, m_sockfd, EPOLLOUT);       //操作完之后重新设置one_shot,本线程的可以继续进行写操作，数据单线程写到底
 }
 
 
