@@ -23,7 +23,7 @@ const char *error_404_form = "The requested file was not found on this server.\n
 const char *error_500_title = "Internal Error";
 const char *error_500_form = "There was an unusual problem serving the request file.\n";
 
-const char *doc_root = "/root/TinyWeb/resoures";
+const char *doc_root = "/root/TinyWeb/root";
 
 
 //设置fd为非阻塞，ET模式下必备
@@ -331,8 +331,6 @@ bool http_conn::process_write(HTTP_CODE ret) {
     //首先是status_line
     //之后是headers,传入的是form的len，
     //其中headers:  1.len  2. linger 3.blankline
-
-    printf("The HTTPcode pro_write got :%d\n", ret);
     switch(ret) {
         case INTERNAL_ERROR: {      //内部错误，500
             add_status_line(500, error_500_title);
@@ -360,14 +358,15 @@ bool http_conn::process_write(HTTP_CODE ret) {
         case FILE_REQUEST: {      //文件存在，200
             add_status_line(200, ok_200_title);
             if (m_file_stat.st_size != 0) {             //POST方法,将文件进行传输
+                printf("待发送文件的size不是0,size:%d\n", m_file_stat.st_size);
                 add_headers(m_file_stat.st_size);
                 //第一个iovec指针指向响应报文缓冲区，长度指向m_write_idx
                 m_iv[0].iov_base = m_write_buf;
                 m_iv[0].iov_len  = m_write_idx;
 
                 //第二个iovec指针指向mmap返回的文件指针，长度指向文件的大小
-                m_iv[0].iov_base = m_file_address;          //mmap映射的文件
-                m_iv[0].iov_len  = m_file_stat.st_size;     //文件的size
+                m_iv[1].iov_base = m_file_address;          //mmap映射的文件
+                m_iv[1].iov_len  = m_file_stat.st_size;     //文件的size
                 m_iv_count = 2;
 
                 //发送的数据是响应报文头部信息和文件的大小
@@ -464,6 +463,8 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
 
 //解析请求首部
 http_conn::HTTP_CODE http_conn::parse_headers(char *text) {
+    //头部结束就是以空开头的
+    //strspn就是判断第一个不存在于str2中的下标
     if (text[0] == '\0') {
         if (m_content_length != 0) {
             m_check_state = CHECK_STATE_CONTENT;
@@ -472,7 +473,7 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text) {
         return GET_REQUEST;             //如果content为0， 那么就是GET请求
     }else if (strncasecmp(text, "Connection:", 11) == 0) {
         text += 11;
-        text += strspn(text, " \t");                    //去掉前置的空格
+        text += strspn(text, " \t");                    //去掉前置的空格,返回的是length
         if (strcasecmp(text, "keep-alive") == 0) {      //长相连模式
             m_linger = true;    
         }
@@ -492,6 +493,8 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text) {
 
 //解析请求实体,用于POST方法
 http_conn::HTTP_CODE http_conn::parse_content(char *text) {
+    //判断一下buffer中是否是读取到了消息体
+    //read_idx如果包含了这个contenlen大小，那么就是读取到了buffer中
     if (m_read_idx >= (m_content_length + m_checked_idx))
     {
         text[m_content_length] = '\0';
@@ -528,6 +531,8 @@ http_conn::HTTP_CODE http_conn::do_request() {
     int fd = open(m_real_file, O_RDONLY);   
     //创建文件和内存之间的映射,发送文件的时候就是用这个地址进行发送的
     m_file_address = (char*)mmap(0, m_file_stat.st_size,PROT_READ, MAP_PRIVATE, fd, 0);
+    
+    //映射完毕之后进行文件描述符的关闭
     close(fd);
     return FILE_REQUEST;
 }
@@ -567,7 +572,7 @@ bool http_conn::add_response(const char *format, ...)
     m_write_idx += len;
     va_end(arg_list);
 
-    printf("写入缓冲区:%s", m_write_buf);
+    printf("写入缓冲区的内容:%s", m_write_buf);
     return true;
 }
 
