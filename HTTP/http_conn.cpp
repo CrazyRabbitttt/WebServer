@@ -358,7 +358,6 @@ bool http_conn::process_write(HTTP_CODE ret) {
         case FILE_REQUEST: {      //文件存在，200
             add_status_line(200, ok_200_title);
             if (m_file_stat.st_size != 0) {             //POST方法,将文件进行传输
-                printf("待发送文件的size不是0,size:%d\n", m_file_stat.st_size);
                 add_headers(m_file_stat.st_size);
                 //第一个iovec指针指向响应报文缓冲区，长度指向m_write_idx
                 m_iv[0].iov_base = m_write_buf;
