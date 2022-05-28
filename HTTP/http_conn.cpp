@@ -34,7 +34,7 @@ int setnoblocking(int fd) {
     return old_option;
 }
 
-//将事件加入到epoll事件表中
+//将读事件加入到epoll事件表中
 //Listen不能设置one_shot,否则只能接受一个客户端
 void addfd(int epollfd, int fd, bool one_shot) {
     epoll_event event;
@@ -49,11 +49,11 @@ void addfd(int epollfd, int fd, bool one_shot) {
     event.events = EPOLLIN | EPOLLRDHUP;
 #endif
 
-#ifndef listenfdET
+#ifdef listenfdET
     event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
 #endif
 
-#ifndef listenfdLT
+#ifdef listenfdLT
     event.events = EPOLLIN | EPOLLRDHUP;
 #endif
 
@@ -181,74 +181,139 @@ bool http_conn::read_once() {
 #endif
 }
 
-
-
-//调用process_write然后注册epollout事件进行驱动，服务器主线程进行检测，调用write 
-//一次性写数据,进行数据的写操作
 bool http_conn::write()
 {
-    int temp = 0;
+    int tmp = 0;
+    int newadd = 0;
 
-    if (bytes_to_send == 0)
-    {
-        modfd(m_epollfd, m_sockfd, EPOLLIN);            //没东西可写，继续读
+    //如果发送的数据长度是0，响应为空
+    if (bytes_to_send == 0){        //重新注册读事件
+        modfd(m_epollfd, m_sockfd, EPOLLIN);
         init();
         return true;
     }
 
-    while (1)
-    {
-        //发送了的数据的字节数目
-        temp = writev(m_sockfd, m_iv, m_iv_count);
+    //如果是大文件，需要进行循环写，每次修改起始地址和len
+    while(1) {
+        //将响应报文，文件发送给浏览器
+        tmp = writev(m_sockfd, m_iv, m_iv_count);
 
+        //正常
+        if (tmp > 0) {
+            bytes_have_send += tmp;
+            //修改发送文件的偏移指针
+            newadd = bytes_have_send - m_write_idx;
+        }
 
-        //发送字节数目小于0
-        if (temp < 0)
-        {
-            if (errno == EAGAIN)
-            {
+        if (tmp <= -1) {
+            //缓冲区满了：wouldblock or eagain,因为是非阻塞的
+            if (errno == EAGAIN) {
+                //如果说响应的报文写完了，将len置为0
+                if (bytes_have_send >= m_iv[0].iov_len) {
+                    //将len置为0，不再发送头部信息
+                    m_iv[0].iov_len = 0;
+                    m_iv[1].iov_base = m_file_address + newadd;
+                    m_iv[1].iov_len = bytes_to_send;        //还需要发送的数据大小
+                }else { //响应头部都还没写完
+                    m_iv[0].iov_base = m_write_buf + bytes_to_send;
+                    m_iv[0].iov_len = m_iv[0].iov_len - bytes_have_send;
+                }
+
+                //重新注册写的事件
                 modfd(m_epollfd, m_sockfd, EPOLLOUT);
                 return true;
             }
+            //发送失败，并且不是因为缓冲区满了，unmap
             unmap();
             return false;
         }
+        
+        //更行发送字节数目
+        bytes_to_send -= tmp;
 
-        //更新待发送和已经发送的数目
-        bytes_have_send += temp;
-        bytes_to_send -= temp;
-
-        //代表HTTP响应报文写完了，下面就是只需要发送文件的内容了
-        if (bytes_have_send >= m_iv[0].iov_len)
-        {
-            m_iv[0].iov_len = 0;            //响应报文待发
-                               //文件内存起始地址     （一共发送了多少 - 响应报文的数目） == 发送了多少文件                 
-            m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_idx);
-            m_iv[1].iov_len = bytes_to_send;
-        }
-        else    //响应报文还没有写完，继续进行响应报文的书写，
-        {
-            m_iv[0].iov_base = m_write_buf + bytes_have_send;
-            m_iv[0].iov_len = m_iv[0].iov_len - bytes_have_send;
-        }
-
-        if (bytes_to_send <= 0)
-        {
+        //判断数据是否全部发送完毕
+        if (bytes_to_send <= 0) {
             unmap();
+
+            //重置epolloneshot事件
             modfd(m_epollfd, m_sockfd, EPOLLIN);
 
-            if (m_linger)
-            {
+            //是否是长连接
+            if (m_linger) {
                 init();
                 return true;
-            }
-            else
-            {
-                return false;
-            }
+            }else return false;
         }
+
     }
+
 }
+
+
+//调用process_write然后注册epollout事件进行驱动，服务器主线程进行检测，调用write 
+//一次性写数据,进行数据的写操作
+// bool http_conn::write()
+// {
+//     int temp = 0;
+
+//     if (bytes_to_send == 0)
+//     {
+//         modfd(m_epollfd, m_sockfd, EPOLLIN);            //没东西可写，继续读
+//         init();
+//         return true;
+//     }
+
+//     while (1)
+//     {
+//         //发送了的数据的字节数目
+//         temp = writev(m_sockfd, m_iv, m_iv_count);
+
+//         if (temp < 0)
+//         {
+//             if (errno == EAGAIN)   //wouldblock，应该阻塞但是没阻塞 -> 缓冲区满了
+//             {
+//                 modfd(m_epollfd, m_sockfd, EPOLLOUT);
+//                 return true;
+//             }
+//             unmap();
+//             return false;
+//         }
+
+//         //更新待发送和已经发送的数目
+//         bytes_have_send += temp;
+//         bytes_to_send -= temp;
+
+//         //代表HTTP响应头部报文写完了，下面就是只需要发送文件的内容了
+//         if (bytes_have_send >= m_iv[0].iov_len)
+//         {
+//             m_iv[0].iov_len = 0;            //响应报文待发
+//                                //文件内存起始地址     （一共发送了多少 - 响应报文的数目） == 发送了多少文件                 
+//             m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_idx);
+//             m_iv[1].iov_len = bytes_to_send;
+//         }
+//         else    //响应报文还没有写完，继续进行响应报文的书写，
+//         {
+//             m_iv[0].iov_base = m_write_buf + bytes_have_send;
+//             m_iv[0].iov_len = m_iv[0].iov_len - bytes_have_send;
+//         }
+
+//         if (bytes_to_send <= 0)
+//         {
+//             unmap();
+//             modfd(m_epollfd, m_sockfd, EPOLLIN);
+
+//             if (m_linger)
+//             {
+//                 init();
+//                 return true;
+//             }
+//             else
+//             {
+//                 return false;
+//             }
+//         }
+//     }
+// }
 
 
 
@@ -394,8 +459,7 @@ bool http_conn::process_write(HTTP_CODE ret) {
     m_iv[0].iov_base = m_write_buf;
     m_iv[0].iov_len  = m_write_idx;
     m_iv_count = 1;
-    bytes_to_send = 
-;
+    bytes_to_send = m_write_idx;
     return true;
 }
 
@@ -637,7 +701,8 @@ void http_conn::process() {
     if (!write_ret) {
         close_conn();       //不行就关闭连接
     }
-    modfd(m_epollfd, m_sockfd, EPOLLOUT);       //操作完之后重新设置one_shot,本线程的可以继续进行写操作，数据单线程写到底
+    modfd(m_epollfd, m_sockfd, EPOLLOUT);       //注册写事件
+
 }
 
 
