@@ -198,8 +198,11 @@ bool http_conn::write()
 
     while (1)
     {
+        //发送了的数据的字节数目
         temp = writev(m_sockfd, m_iv, m_iv_count);
 
+
+        //发送字节数目小于0
         if (temp < 0)
         {
             if (errno == EAGAIN)
@@ -211,15 +214,19 @@ bool http_conn::write()
             return false;
         }
 
+        //更新待发送和已经发送的数目
         bytes_have_send += temp;
         bytes_to_send -= temp;
+
+        //代表HTTP响应报文写完了，下面就是只需要发送文件的内容了
         if (bytes_have_send >= m_iv[0].iov_len)
         {
-            m_iv[0].iov_len = 0;
+            m_iv[0].iov_len = 0;            //响应报文待发
+                               //文件内存起始地址     （一共发送了多少 - 响应报文的数目） == 发送了多少文件                 
             m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_idx);
             m_iv[1].iov_len = bytes_to_send;
         }
-        else
+        else    //响应报文还没有写完，继续进行响应报文的书写，
         {
             m_iv[0].iov_base = m_write_buf + bytes_have_send;
             m_iv[0].iov_len = m_iv[0].iov_len - bytes_have_send;
@@ -387,7 +394,8 @@ bool http_conn::process_write(HTTP_CODE ret) {
     m_iv[0].iov_base = m_write_buf;
     m_iv[0].iov_len  = m_write_idx;
     m_iv_count = 1;
-    bytes_to_send = m_write_idx;
+    bytes_to_send = 
+;
     return true;
 }
 

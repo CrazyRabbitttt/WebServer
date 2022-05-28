@@ -170,7 +170,7 @@ int main(int argc, char** argv)
                 }
             } else if (events[i].events & EPOLLOUT) {                               //数据可以进行写操作
                 if(!users[sockfd].write()) {
-                    users[sockfd].close_conn();         //如果写失败了就关闭连接
+                    users[sockfd].close_conn();         //如果写失败了或者不是长连接就关闭连接
                 }
             }
         }
