@@ -157,7 +157,7 @@ int main(int argc, char** argv)
                 //服务器需要进行连接的关闭，移除对应的定时器
                 //todo: 应该封装在定时器内部的，目前只是直接关闭而已
                 users[sockfd].close_conn();         //进行客户端连接的关闭
-            } else if(events[i].events && EPOLLIN) {                                //数据可以进行读取的事件
+            } else if(events[i].events & EPOLLIN) {                                //数据可以进行读取的事件
                 if(users[sockfd].read_once()) {
                     //一次性将所有的数据进行读取完毕
                     //将http_conn传到线程池上，工作线程进行连接的处理
