@@ -701,6 +701,11 @@ void http_conn::process() {
     if (!write_ret) {
         close_conn();       //不行就关闭连接
     }
+
+    //数据准备好了就直接进行发送,而不依靠事件驱动主函数进行捕捉可写的事件
+
+    int ret = write();
+    if (!ret) cout << "数据发送write()函数失败！\n";
     modfd(m_epollfd, m_sockfd, EPOLLOUT);       //注册写事件
 
 }

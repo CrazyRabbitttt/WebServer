@@ -99,7 +99,6 @@ int main(int argc, char** argv)
     //listen
     ret = listen(listenfd, 5);
     assert(ret >= 0);  
-    printf("Listening 完成...\n");
     //创建epoll对象事件表,epoll_wait中完成的事件都会写到这个数组中的
     epoll_event events[MAX_EVENT_NUMBER];
     epollfd = epoll_create(5);
@@ -162,7 +161,6 @@ int main(int argc, char** argv)
                 if(users[sockfd].read_once()) {
                     //一次性将所有的数据进行读取完毕
                     //将http_conn传到线程池上，工作线程进行连接的处理
-                    // printf("数据读取成功，开始添加到线程池处理\n");
                     pool->append(users + sockfd);
                 }else {     //读取数据失败
                     printf("read_once()读取失败,main :169\n");
