@@ -83,6 +83,9 @@ void modfd(int epollfd, int fd, int ev) {
 #endif
 
     epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &event);
+    if (event.events & EPOLLOUT) {
+        cout << "EPOLLOUT事件进行注册成功\n";
+    }
 }
 
 //初始化http连接，外部调用初始化套接字地址
@@ -565,7 +568,7 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text) {
 //解析请求实体,用于POST方法
 http_conn::HTTP_CODE http_conn::parse_content(char *text) {
     //判断一下buffer中是否是读取到了消息体
-    //read_idx如果包含了这个contenlen大小，那么就是读取到了buffer中
+    //read_idx如果包含了这个contenlen大小，那么就是完整读取到了buffer中
     if (m_read_idx >= (m_content_length + m_checked_idx))
     {
         text[m_content_length] = '\0';
@@ -576,34 +579,65 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text) {
     return NO_REQUEST;
 }
 
-//进行请求的具体的响应
+// //进行请求的具体的响应
+// http_conn::HTTP_CODE http_conn::do_request() {
+//     strcpy(m_real_file, doc_root);
+//     int len = strlen(doc_root);
+
+
+//     //进行资源路径的拼接,目前只是处理回弹index.html的功能
+//     strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
+
+//     //判断文件的状态
+//     if (stat(m_real_file, &m_file_stat) < 0) {
+//         return NO_RESOURCE;             //资源问题，没有资源
+//     }   
+//     //判断访问权限
+//     if (!(m_file_stat.st_mode & S_IROTH)) {
+//         return FORBIDDEN_REQUEST;       //禁止访问，权限不够
+//     }
+
+//     //判断是否是目录，是目录就代表出错
+//     if(S_ISDIR(m_file_stat.st_mode)) {
+//         return BAD_REQUEST;
+//     }
+//     //按照只读的方式打开文件,将文件进行mmap内存的映射，mmap + write实现零拷贝
+//     int fd = open(m_real_file, O_RDONLY);   
+//     //创建文件和内存之间的映射,发送文件的时候就是用这个地址进行发送的
+//     m_file_address = (char*)mmap(0, m_file_stat.st_size,PROT_READ, MAP_PRIVATE, fd, 0);
+    
+//     //映射完毕之后进行文件描述符的关闭
+//     close(fd);
+//     return FILE_REQUEST;
+// }
+
+
+//根据解析到的结果进行响应
 http_conn::HTTP_CODE http_conn::do_request() {
-    strcpy(m_real_file, doc_root);
+    //1.将文件进行传输
+    strcpy(m_real_file, doc_root);      //进行文件名的传输
+    //2.进行资源的拼接
     int len = strlen(doc_root);
+    printf("M_URL: %s\n", m_url);
+    strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);      //将url拼接到doc_root后面进行文件的定位
 
-
-    //进行资源路径的拼接,目前只是处理回弹index.html的功能
-    strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
-
-    //判断文件的状态
+    //3.判断文件的状态，是否存在，是否有权限，是否是一个可发送的文件
     if (stat(m_real_file, &m_file_stat) < 0) {
-        return NO_RESOURCE;             //资源问题，没有资源
-    }   
-    //判断访问权限
+        return NO_REQUEST;      //没有这个文件
+    }
+    //4.判断文件的访问权限
     if (!(m_file_stat.st_mode & S_IROTH)) {
-        return FORBIDDEN_REQUEST;       //禁止访问，权限不够
+        return FORBIDDEN_REQUEST;       //没有访问的权限
     }
 
-    //判断是否是目录，是目录就代表出错
-    if(S_ISDIR(m_file_stat.st_mode)) {
+    //5.判断这是不是一个目录
+    if (S_ISDIR(m_file_stat.st_mode)) {
         return BAD_REQUEST;
     }
-    //按照只读的方式打开文件,将文件进行mmap内存的映射，mmap + write实现零拷贝
+
+    //将文件进行mmap映射到内存
     int fd = open(m_real_file, O_RDONLY);   
-    //创建文件和内存之间的映射,发送文件的时候就是用这个地址进行发送的
-    m_file_address = (char*)mmap(0, m_file_stat.st_size,PROT_READ, MAP_PRIVATE, fd, 0);
-    
-    //映射完毕之后进行文件描述符的关闭
+    m_file_address = (char*)mmap(0, m_file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
     return FILE_REQUEST;
 }
@@ -704,8 +738,8 @@ void http_conn::process() {
 
     //数据准备好了就直接进行发送,而不依靠事件驱动主函数进行捕捉可写的事件
 
-    int ret = write();
-    if (!ret) cout << "数据发送write()函数失败！\n";
+    // int ret = write();
+    // if (!ret) cout << "数据发送write()函数失败！\n";
     modfd(m_epollfd, m_sockfd, EPOLLOUT);       //注册写事件
 
 }

@@ -29,6 +29,7 @@ int main(int argc, char ** argv)
     //存储字段结构的数组
     MYSQL_FIELD * fields = mysql_fetch_fields(result);
 
+
     //从结果集中读取下一行，存储用户名、密码
     while(MYSQL_ROW row = mysql_fetch_row(result)) {
         string tmp1(row[0]);
