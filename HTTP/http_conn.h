@@ -111,7 +111,7 @@ private:
     int m_iv_count;                         //iovec的数目
     int bytes_to_send;                      //准备发送的字节数目
     int bytes_have_send;                    //已经发送了的字节的数目
-
+    int m_ispost;                            //HTTP发送的是否是post请求
 
 };
 

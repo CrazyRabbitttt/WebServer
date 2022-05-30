@@ -129,6 +129,7 @@ void http_conn::init() {
 
     m_host = 0;
 
+    m_ispost = 0;
 
     memset(m_read_buf, '\0', sizeof(READ_BUFFER_SIZE));
     memset(m_write_buf, '\0', sizeof(WRITE_BUFFER_SIZE));
@@ -480,9 +481,10 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
 
     if (strcasecmp(method, "GET") == 0) 
         m_method = GET;
-    else if (strcasecmp(method, "POST") == 0) 
+    else if (strcasecmp(method, "POST") == 0) {
         m_method = POST;
-        //todo : cgi
+        m_ispost = true;            //是post方法
+    }
     else {
         printf("请求行中Method方法不是GET、POST!!\n");
         return BAD_REQUEST;
@@ -618,8 +620,33 @@ http_conn::HTTP_CODE http_conn::do_request() {
     strcpy(m_real_file, doc_root);      //进行文件名的传输
     //2.进行资源的拼接
     int len = strlen(doc_root);
-    printf("M_URL: %s\n", m_url);
-    strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);      //将url拼接到doc_root后面进行文件的定位
+
+    //下面进行POST方法的处理
+    const char *p = strrchr(m_url, '/');        //p指向/的位置
+    if (m_ispost && (*(p + 1) == '2' || *(p + 1) == 3)) {       //进行注册 or 登录
+        //根据符号位进行判断：登陆检测或者是注册检测
+
+        //同步线程登陆校验
+
+        //CGI多进程登陆校验
+    }
+
+    /*下面进行请求资源页面的判读*/
+    if(*(p + 1) == '0') {       //注册界面，判断的字符是0
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/register.html");
+
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+        free(m_url_real);
+    }else if (*(p + 1) == '1') {    //登陆界面，判断的字符是1
+        char *m_url_real = (char*)malloc(sizeof(char*) * 200);
+        strcpy(m_url_real, "login.html");
+
+        strncpy(m_real_file, m_url_real, strlen(m_url_real));
+        free(m_url_real);
+    }else strncpy(m_real_file, m_url, FILENAME_LEN - len - 1);  //如果都不是的话，那么就是默认的界面      
+
+
 
     //3.判断文件的状态，是否存在，是否有权限，是否是一个可发送的文件
     if (stat(m_real_file, &m_file_stat) < 0) {
@@ -738,13 +765,9 @@ void http_conn::process() {
 
     //数据准备好了就直接进行发送,而不依靠事件驱动主函数进行捕捉可写的事件
 
-    // int ret = write();
-    // if (!ret) cout << "数据发送write()函数失败！\n";
+    if (!write()) {     //如果说写失败了或者不是长连接的话就关闭连接
+        close_conn();
+    }
     modfd(m_epollfd, m_sockfd, EPOLLOUT);       //注册写事件
 
 }
-
-
-
-
-
