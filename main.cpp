@@ -12,7 +12,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
-
+#include "MYSQL/SqlConnectionPool.h"
 
 #define MAX_FD  65535                   //最大文件描述符
 #define MAX_EVENT_NUMBER    10000       //最大事件数目
@@ -61,14 +61,14 @@ int main(int argc, char** argv)
 
     //创建数据库连接池子,单例模式创建的对象
     //change :
-    // connection_pool *connPool = connection_pool::GetInstance();
-    // connPool->init("localhost", "root", "shaoguixin1+", "AA", 3306, 8);
+    connection_pool *connPool = connection_pool::GetInstance();
+    connPool->init("localhost", "root", "shaoguixin1+", "AA", 3306, 8);
 
     printf("Calling begin...\n");
     threadpool<http_conn> *pool = NULL;
     try {
         //尝试创建线程池,将http传给线程池进行处理。调用任务类的process()
-        pool = new threadpool<http_conn>;       //change
+        pool = new threadpool<http_conn>(connPool);       //change
         printf("Calling 线程池·...\n");
     } catch (...) {
         return 1;
@@ -78,6 +78,9 @@ int main(int argc, char** argv)
     http_conn * users = new http_conn[MAX_FD];
     assert(users);
     printf("客户端数组完成...\n");
+
+    users->initmysql_result(connPool);
+
     //创建socket
     int listenfd = socket(PF_INET, SOCK_STREAM, 0);                         
     assert(listenfd >= 0);

@@ -25,6 +25,41 @@ const char *error_500_form = "There was an unusual problem serving the request f
 
 const char *doc_root = "/root/TinyWeb/root";
 
+locker m_lock;
+
+map<string, string> users;
+
+void http_conn::initmysql_result(connection_pool *connPool) {
+
+    //从数据库连接池中取得连接
+    MYSQL *mysql = NULL;
+    connectionRAII mysqlcon(&mysql, connPool);      //从数据库连接池子中获取一个连接
+
+    //将所有的用户名密码提取到内存中
+
+    if(mysql_query(mysql, "SELECT name, passwd from users")) {
+        printf("select from table error\n");
+    }
+
+//从表中检索完整的结果集
+    MYSQL_RES *result = mysql_store_result(mysql);
+
+    //返回结果集中的列数
+    int num_fields = mysql_num_fields(result);
+
+    //返回所有字段结构的数组
+    MYSQL_FIELD *fields = mysql_fetch_fields(result);
+
+    //从结果集中获取下一行，将对应的用户名和密码，存入map中
+    while (MYSQL_ROW row = mysql_fetch_row(result))
+    {
+        string temp1(row[0]);
+        string temp2(row[1]);
+        users[temp1] = temp2;
+    }
+}
+
+
 
 //设置fd为非阻塞，ET模式下必备
 int setnoblocking(int fd) {
@@ -103,6 +138,7 @@ void http_conn::init(int sockfd, const sockaddr_in &client_addr) {
 //初始化类内部的字段，idx字段啥的
 void http_conn::init() {
 
+    mysql = NULL;
     m_check_state = CHECK_STATE_REQUESTLINE;        //初始化主状态机为解析首部
 
     bytes_have_send = 0;
@@ -251,70 +287,7 @@ bool http_conn::write()
 }
 
 
-//调用process_write然后注册epollout事件进行驱动，服务器主线程进行检测，调用write 
-//一次性写数据,进行数据的写操作
-// bool http_conn::write()
-// {
-//     int temp = 0;
 
-//     if (bytes_to_send == 0)
-//     {
-//         modfd(m_epollfd, m_sockfd, EPOLLIN);            //没东西可写，继续读
-//         init();
-//         return true;
-//     }
-
-//     while (1)
-//     {
-//         //发送了的数据的字节数目
-//         temp = writev(m_sockfd, m_iv, m_iv_count);
-
-//         if (temp < 0)
-//         {
-//             if (errno == EAGAIN)   //wouldblock，应该阻塞但是没阻塞 -> 缓冲区满了
-//             {
-//                 modfd(m_epollfd, m_sockfd, EPOLLOUT);
-//                 return true;
-//             }
-//             unmap();
-//             return false;
-//         }
-
-//         //更新待发送和已经发送的数目
-//         bytes_have_send += temp;
-//         bytes_to_send -= temp;
-
-//         //代表HTTP响应头部报文写完了，下面就是只需要发送文件的内容了
-//         if (bytes_have_send >= m_iv[0].iov_len)
-//         {
-//             m_iv[0].iov_len = 0;            //响应报文待发
-//                                //文件内存起始地址     （一共发送了多少 - 响应报文的数目） == 发送了多少文件                 
-//             m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_idx);
-//             m_iv[1].iov_len = bytes_to_send;
-//         }
-//         else    //响应报文还没有写完，继续进行响应报文的书写，
-//         {
-//             m_iv[0].iov_base = m_write_buf + bytes_have_send;
-//             m_iv[0].iov_len = m_iv[0].iov_len - bytes_have_send;
-//         }
-
-//         if (bytes_to_send <= 0)
-//         {
-//             unmap();
-//             modfd(m_epollfd, m_sockfd, EPOLLIN);
-
-//             if (m_linger)
-//             {
-//                 init();
-//                 return true;
-//             }
-//             else
-//             {
-//                 return false;
-//             }
-//         }
-//     }
-// }
 
 
 
@@ -483,7 +456,7 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
         m_ispost = true;            //是post方法
     }
     else {
-        printf("请求行中Method方法不是GET、POST!!\n");
+        printf("请求行中Method方法不是GET、POST\n");
         return BAD_REQUEST;
     }
         
@@ -566,47 +539,15 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text) {
 http_conn::HTTP_CODE http_conn::parse_content(char *text) {
     //判断一下buffer中是否是读取到了消息体
     //read_idx如果包含了这个contenlen大小，那么就是完整读取到了buffer中
-    if (m_read_idx >= (m_content_length + m_checked_idx))
-    {
+    //传入的text就是新解析到的一行数据
+    if (m_read_idx >= m_content_length + m_checked_idx) {
         text[m_content_length] = '\0';
-        //POST请求中最后为输入的用户名和密码
         m_string = text;
         return GET_REQUEST;
     }
     return NO_REQUEST;
 }
 
-// //进行请求的具体的响应
-// http_conn::HTTP_CODE http_conn::do_request() {
-//     strcpy(m_real_file, doc_root);
-//     int len = strlen(doc_root);
-
-
-//     //进行资源路径的拼接,目前只是处理回弹index.html的功能
-//     strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
-
-//     //判断文件的状态
-//     if (stat(m_real_file, &m_file_stat) < 0) {
-//         return NO_RESOURCE;             //资源问题，没有资源
-//     }   
-//     //判断访问权限
-//     if (!(m_file_stat.st_mode & S_IROTH)) {
-//         return FORBIDDEN_REQUEST;       //禁止访问，权限不够
-//     }
-
-//     //判断是否是目录，是目录就代表出错
-//     if(S_ISDIR(m_file_stat.st_mode)) {
-//         return BAD_REQUEST;
-//     }
-//     //按照只读的方式打开文件,将文件进行mmap内存的映射，mmap + write实现零拷贝
-//     int fd = open(m_real_file, O_RDONLY);   
-//     //创建文件和内存之间的映射,发送文件的时候就是用这个地址进行发送的
-//     m_file_address = (char*)mmap(0, m_file_stat.st_size,PROT_READ, MAP_PRIVATE, fd, 0);
-    
-//     //映射完毕之后进行文件描述符的关闭
-//     close(fd);
-//     return FILE_REQUEST;
-// }
 
 
 //根据解析到的结果进行响应
@@ -616,14 +557,87 @@ http_conn::HTTP_CODE http_conn::do_request() {
     //2.进行资源的拼接
     int len = strlen(doc_root);
 
-    //下面进行POST方法的处理
+    //下面进行POST方法的处理,登陆、注册的具体的处理
     const char *p = strrchr(m_url, '/');        //p指向/的位置
     if (m_ispost && (*(p + 1) == '2' || *(p + 1) == 3)) {       //进行注册 or 登录
         //根据符号位进行判断：登陆检测或者是注册检测
-        printf("是cgi事件\n");
-        //同步线程登陆校验
+        printf("now in cgi handler\n");
+        char ch = m_url[1];
+        char *m_real_url = (char*)malloc(sizeof(char) * 200);
 
-        //CGI多进程登陆校验
+        strcpy(m_real_url, "/");
+        printf("533\n");
+        strcat(m_real_url, m_url + 2);
+        printf("535\n");
+        strncpy(m_real_file + len, m_real_url, FILENAME_LEN - len - 1);
+        printf("537\n");
+        free(m_real_url);
+
+
+        //content进行用户名，密码的传输
+        //format: user=1122&passwd=1234
+        // char *name, *password, *ptr;  //提取出用户名 & 密码
+        // ptr = name;
+        // int i;
+        // for (i = 5; m_string[i] != '&'; i++) 
+        //     *(ptr++) = m_string[i];
+        // *ptr = '\0';
+        // printf("The Name we parse:%s\n", name);
+        // ptr = password;
+        // for (i = i + 10; m_string[i] != '\0'; i++) 
+        //     *(ptr++) = m_string[i];
+        // *ptr = '\0';
+        // printf("The Password we parse:%s\n", password);
+
+        printf("The m_string: %s\n", m_string);
+        char name[100], password[100];
+        int i;
+        for (i = 5; m_string[i] != '&'; ++i)
+            name[i - 5] = m_string[i];
+        name[i - 5] = '\0';
+
+        printf("The name: %s\n", name);
+
+        int j = 0;
+        for (i = i + 10; m_string[i] != '\0'; ++i, ++j)
+            password[j] = m_string[i];
+        password[j] = '\0';
+
+        printf("The password:%s\n", password);
+        //同步线程登陆校验
+        if (*(p + 1) == '3') {
+            //如果是注册的话，需要查表进行判断是否是有重名的
+            //如果没有重名的话，进行数据的增加
+            char *sql_insert = (char*)malloc(sizeof(char) * 200);
+            //insert into users values(username, passwd)
+            strcpy(sql_insert, "insert into users values(");
+            strcat(sql_insert, "'");
+            strcat(sql_insert, name);
+            strcat(sql_insert, "','");
+            strcat(sql_insert, password);
+            strcat(sql_insert, "')");
+
+            if(users.find(name) == users.end()) {
+                m_lock.lock();
+                int res = mysql_query(mysql, sql_insert);
+                users.insert(pair<string,string>(name, password));
+                m_lock.unlock();
+
+
+                if (!res)
+                    strcpy(m_url, "/login.html");
+                else 
+                    strcpy(m_url, "/register.html");
+            }else 
+                strcpy(m_url, "/registerError.html");
+
+        }else if (*(p + 1) == '2') {
+            if (users.find(name) != users.end() && users[name] == password) {
+                strcpy(m_url, "/welcome.html");
+            }else 
+                strcpy(m_url, "/loginError.html");
+        }
+         //CGI多进程登陆校验 
     }
 
     /*下面进行请求资源页面的判读*/
@@ -632,7 +646,8 @@ http_conn::HTTP_CODE http_conn::do_request() {
         strcpy(m_real_url, "/register.html");
 
         //将对应的注册的文件地址拼接到real_file上面
-        strncpy(m_real_file + len, m_real_url, strlen(m_real_url));
+        // strncpy(m_real_file + len, m_real_url, strlen(m_real_url));
+        strcat(m_real_file, m_real_url);        //将注册的url拼接的real_file中
         free(m_real_url);
     }else if (*(p + 1) == '1') {    //登陆界面，判断的字符是1
         char *m_url_real = (char*)malloc(sizeof(char*) * 200);
@@ -771,10 +786,10 @@ void http_conn::process() {
 
     //数据准备好了就直接进行发送,而不依靠事件驱动主函数进行捕捉可写的事件
 
-    if (!write()) {     //如果说写失败了或者不是长连接的话就关闭连接
-        cout << "Now sub pthread running the write function...\n";
-        close_conn();
-    }
+    // if (!write()) {     //如果说写失败了或者不是长连接的话就关闭连接
+    //     cout << "Now sub pthread running the write function...\n";
+    //     close_conn();
+    // }
     modfd(m_epollfd, m_sockfd, EPOLLOUT);       //注册写事件
 
 }

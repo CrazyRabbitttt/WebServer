@@ -6,7 +6,7 @@
 #include <exception>
 #include <pthread.h>
 #include "../Locker/locker.h"
-// #include "../MYSQL/SqlConnectionPool.h"
+#include "../MYSQL/SqlConnectionPool.h"
 
 
 template<typename T>
@@ -14,7 +14,7 @@ class threadpool
 {
 public:
     //初始化线程池，进行数据库的连接                线程池中线程数目        请求队列中最多允许的数目
-    threadpool(int thread_number = 8, int max_request = 10000);
+    threadpool(connection_pool * connPool, int thread_number = 8, int max_request = 10000);
     ~threadpool();
     /* 向请求队列中插入任务请求 */
     bool append(T *request);
@@ -35,14 +35,14 @@ private:
     sem m_queuestat;            //请求队列的状态，是否有任务需要进行处理
 
     bool m_stop;                //是否结束线程
-    // connection_pool *m_connPool;//数据库连接池
+    connection_pool *m_connPool;//数据库连接池
 
 };
 
 
 template<typename T>
-threadpool<T>::threadpool(int thread_number, int max_request)
-    :m_thread_number(thread_number), m_max_requests(max_request), m_stop(false), m_threads(NULL)
+threadpool<T>::threadpool(connection_pool * connPool, int thread_number, int max_request)
+    :m_thread_number(thread_number), m_max_requests(max_request), m_stop(false), m_threads(NULL), m_connPool(connPool)
     {
         printf("到达线程池构造函数...\n");
         /* 如果说线程数或者是请求数小于0 就不抛出异常*/
@@ -135,7 +135,7 @@ void threadpool<T>::run() {
         /*连接数据库，从连接池中取出来一个数据库连接*/
 
         // 传递的是http类的变量mysql
-    //  connectionRAII mysqlcon(&request->mysql, m_connPool);
+        connectionRAII mysqlcon(&request->mysql, m_connPool);
 
         /*Process进行处理*/
         request -> process();           //就是每个对象都自己有处理的函数，process

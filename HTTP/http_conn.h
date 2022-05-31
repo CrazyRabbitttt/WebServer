@@ -19,6 +19,8 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <map>
+#include <vector>
 #include <sys/uio.h>
 #include "../Locker/locker.h"
 #include "../MYSQL/SqlConnectionPool.h"
@@ -60,7 +62,8 @@ public:
 public:
     static int m_epollfd;               //所有socket事件(http)都注册到同一个epoll对象,用静态变量就好了
     static int m_user_count;            //用户数量也同样是共享的
-    // MYSQL *mysql;                   //用于connectionRAII时候传入进行初始化
+    void initmysql_result(connection_pool *connPool);       ///将数据库中的内容提取到内存中
+    MYSQL *mysql;
 private:
     void init();                                //进行类中字段的初始化
     void unmap();                                //文件映射到内存的解
