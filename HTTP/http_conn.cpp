@@ -83,9 +83,6 @@ void modfd(int epollfd, int fd, int ev) {
 #endif
 
     epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &event);
-    if (event.events & EPOLLOUT) {
-        cout << "EPOLLOUT事件进行注册成功\n";
-    }
 }
 
 //初始化http连接，外部调用初始化套接字地址
@@ -164,7 +161,7 @@ bool http_conn::read_once() {
     if (bytes_read <= 0) {
         return false;
     } 
-    printf("LT:读取到了数据:%s\n", m_read_buf);
+    // printf("LT:读取到了数据:%s\n", m_read_buf);
     return true;
 #endif
 
@@ -505,8 +502,7 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
         
     *m_version++ = '\0';
     m_version += strspn(m_version, " \t");
-    cout << "The Version we got :" ;
-    printf("%s\n", m_version);
+    // printf("%s\n", m_version);
     //  :/index.html\0   HTTP1.1
     if(strcasecmp(m_version, "HTTP/1.1") != 0) {
         cout << "HTTP版本输入不正确\n";
@@ -562,7 +558,6 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text) {
         text += strspn(text, " \t");
         m_host = text;
     } else {
-        printf("Unknown header : %s\n", text);
     }
     return NO_REQUEST;
 }
@@ -625,7 +620,7 @@ http_conn::HTTP_CODE http_conn::do_request() {
     const char *p = strrchr(m_url, '/');        //p指向/的位置
     if (m_ispost && (*(p + 1) == '2' || *(p + 1) == 3)) {       //进行注册 or 登录
         //根据符号位进行判断：登陆检测或者是注册检测
-
+        printf("是cgi事件\n");
         //同步线程登陆校验
 
         //CGI多进程登陆校验
@@ -633,18 +628,19 @@ http_conn::HTTP_CODE http_conn::do_request() {
 
     /*下面进行请求资源页面的判读*/
     if(*(p + 1) == '0') {       //注册界面，判断的字符是0
-        char *m_url_real = (char *)malloc(sizeof(char) * 200);
-        strcpy(m_url_real, "/register.html");
+        char *m_real_url = (char*)malloc(sizeof(char) * 200);
+        strcpy(m_real_url, "/register.html");
+
+        //将对应的注册的文件地址拼接到real_file上面
+        strncpy(m_real_file + len, m_real_url, strlen(m_real_url));
+        free(m_real_url);
+    }else if (*(p + 1) == '1') {    //登陆界面，判断的字符是1
+        char *m_url_real = (char*)malloc(sizeof(char*) * 200);
+        strcpy(m_url_real, "/login.html");
 
         strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
         free(m_url_real);
-    }else if (*(p + 1) == '1') {    //登陆界面，判断的字符是1
-        char *m_url_real = (char*)malloc(sizeof(char*) * 200);
-        strcpy(m_url_real, "login.html");
-
-        strncpy(m_real_file, m_url_real, strlen(m_url_real));
-        free(m_url_real);
-    }else strncpy(m_real_file, m_url, FILENAME_LEN - len - 1);  //如果都不是的话，那么就是默认的界面      
+    }else strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);  //如果都不是的话，那么就是默认的界面      
 
 
 
@@ -704,7 +700,6 @@ bool http_conn::add_response(const char *format, ...)
     m_write_idx += len;
     va_end(arg_list);
 
-    printf("写入缓冲区的内容:%s", m_write_buf);
     return true;
 }
 
@@ -756,7 +751,6 @@ void http_conn::process() {
         return ;
     }
 
-    printf("Finish process_read(), now run process_write()\n");
     //生成响应
     bool write_ret = process_write(read_ret);
     if (!write_ret) {
@@ -766,6 +760,7 @@ void http_conn::process() {
     //数据准备好了就直接进行发送,而不依靠事件驱动主函数进行捕捉可写的事件
 
     if (!write()) {     //如果说写失败了或者不是长连接的话就关闭连接
+        cout << "Now sub pthread running the write function...\n";
         close_conn();
     }
     modfd(m_epollfd, m_sockfd, EPOLLOUT);       //注册写事件
