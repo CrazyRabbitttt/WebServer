@@ -640,6 +640,18 @@ http_conn::HTTP_CODE http_conn::do_request() {
 
         strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
         free(m_url_real);
+    }else if(*(p + 1) == '5') {         //访问图片的地址
+        char *m_real_url = (char*)malloc(sizeof(char) * 200);
+        strcpy(m_real_url, "/picture.html");
+
+        strncpy(m_real_file + len, m_real_url, strlen(m_real_url));
+        free(m_real_url);
+    }else if (*(p + 1) == '6') {        //访问视频的网址
+        char *m_real_url = (char*)malloc(sizeof(char) * 200);
+        strcpy(m_real_url, "/video.html");
+
+        strncpy(m_real_file + len, m_real_url, strlen(m_real_url));
+        free(m_real_url);   
     }else strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);  //如果都不是的话，那么就是默认的界面      
 
 
