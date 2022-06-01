@@ -13,10 +13,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "MYSQL/SqlConnectionPool.h"
+#include "Timer/timer.h"
+
 
 #define MAX_FD  65535                   //最大文件描述符
 #define MAX_EVENT_NUMBER    10000       //最大事件数目
-
+#define TIMESLOT    5                   //最小的超时单位
 
 // #define listenfdET                        //边缘触发模式
 #define listenfdLT                        //水平触发模式
@@ -29,6 +31,12 @@ extern void removefd(int epollfd, int fd);
 extern int  setnoblocking(int fd);
 extern void modfd(int epollfd, int fd, int ev);
 
+
+//进行定时器的设置
+static int pipefd[2];
+static time_wheel m_time_wheel;
+static int epollfd = 0;
+
 void show_error(int connfd, const char * info) {
     printf("%s", info);
     send(connfd, info, strlen(info), 0);
@@ -36,13 +44,44 @@ void show_error(int connfd, const char * info) {
 }
 
 
-//信号的处理函数
-void addsig(int sig, void(handler)(int)) {
+//设置信号函数集
+void addsig(int sig, void(handler)(int), bool restart = true) {
     struct sigaction sa;                //一种更加健壮的信号处理的函数
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = handler;            //处理函数
+    if (restart) 
+        sa.sa_flags |= SA_RESTART;
     sigfillset(&sa.sa_mask);            //首先进行屏蔽其他的信号
-    sigaction(sig, &sa, NULL);          //Null就是先前的处理方式
+    assert(sigaction(sig, &sa, NULL) != -1);
+}
+
+
+//信号的处理函数
+void sig_handler(int sig) {
+    //为了保证可重入性质，保留errno
+    int save_errno = errno;
+    int msg = sig;
+    send(pipefd[1], (char*)&msg, 1, 0);
+    errno = save_errno;
+}
+
+
+//定时处理任务，重新定义时候不断触发SIGALRM信号，进行定时
+void timer_handler() {
+    m_time_wheel.tick();
+    alarm(TIMESLOT);
+}
+
+
+//定时器回调函数，删除非活动socket、注册的事件并且进行关闭
+void cb_function(client_data* user_data) {
+    /* 进行事件的删除 */
+    epoll_ctl(epollfd, EPOLL_CTL_DEL, user_data->sockfd, 0);
+    assert(user_data);
+    /* 关闭掉对应的socket了连接 */
+    close(user_data->sockfd);
+    http_conn::m_user_count --;
+    printf("Close fd %d", user_data->sockfd);
 }
 
 
@@ -86,7 +125,7 @@ int main(int argc, char** argv)
     assert(listenfd >= 0);
 
     // 设置端口复用
-    int reuse = 1, ret, epollfd;
+    int reuse = 1, ret;
     setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));  
 
     struct sockaddr_in address;                         //通用地址？
@@ -110,7 +149,22 @@ int main(int argc, char** argv)
     addfd(epollfd, listenfd, false);
     http_conn::m_epollfd = epollfd;                    //将epollfd传进静态变量，供所有的http共享使用
 
+    bool timeout = false;
     bool stop_server = false;
+
+    //创建管道进行定时器的任务
+    ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipefd);
+    assert(ret != -1);
+    setnoblocking(pipefd[1]);           //写是非阻塞的
+    addfd(epollfd, pipefd[0], false);   //epoll注册读事件，主线程处理读取管道，然后进行信号的处理
+
+    addsig(SIGALRM, sig_handler, false);
+    addsig(SIGTERM, sig_handler, false);
+
+    client_data* users_timer = new client_data[MAX_FD];     //客户端的定时器的数组
+
+    alarm(TIMESLOT);                    //设定好alarm的时间,定时进行传送alarm信号，通过信号处理函数进行处理
+
     while (!stop_server) {
         int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
         if (number < 0 && errno != EINTR) {
@@ -138,6 +192,20 @@ int main(int argc, char** argv)
                     continue;
                 }
                 users[connfd].init(connfd, client_address);     //init HTTP请求连接
+
+                /* 进行定时器的设置,初始化客户端的数据
+                    创建定时器，设置回调函数、超时时间，绑定用户数据，添加定时器到链表中
+                */
+               //进行客户端的地址等的设置
+                users_timer[connfd].address = client_address;
+                users_timer[connfd].sockfd  = connfd;
+                //客户端定时器的参数的设置
+                tw_timer* timer = m_time_wheel.add_timer(3 * TIMESLOT);             //超时时间设置为3 * 5
+                timer->user_data = &users_timer[connfd];        //将对应的客户端的数据进行配置好
+                timer->cb_func = cb_function;                   //回调函数
+                //将定时器插入到时间轮上面
+                users_timer[connfd].timer = timer;
+
 #endif
 
 #ifdef listenfdET

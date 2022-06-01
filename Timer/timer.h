@@ -17,7 +17,6 @@ struct client_data
 {
     sockaddr_in address;
     int sockfd;
-    char buf[BUFFER_SIZE];
     tw_timer *timer;        //定时器
 };
 
