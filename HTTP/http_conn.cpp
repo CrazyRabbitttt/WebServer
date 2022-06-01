@@ -437,73 +437,50 @@ bool http_conn::process_write(HTTP_CODE ret) {
     return true;
 }
 
-//解析请求的首行
+//解析请求的首行,获得Method，url，HTTPversion
 http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
-
     //GET /index.html HTTP/1.1
-    m_url = strpbrk(text, " \t");       //获得到GET后面的那个位置，第一个空格出现的位置
-    if (!m_url) {
-        printf("请求行中没有空行,BAD_Request,http.cpp:433!!!\n");
-        return BAD_REQUEST;
-    }
-    *m_url++ = '\0';                    //GET\0/index.html HTTP/1.1
-    char *method = text;              //进行method的赋值
+    m_url = strpbrk(text, " \t");       //第一个空行的位置
+    if (!m_url) return BAD_REQUEST;
 
+    *m_url++ = '\0';        //用于确认Method
+    char *method = text;
     if (strcasecmp(method, "GET") == 0) 
         m_method = GET;
     else if (strcasecmp(method, "POST") == 0) {
-        m_method = POST;
-        m_ispost = true;            //是post方法
-    }
-    else {
-        printf("请求行中Method方法不是GET、POST\n");
+        m_method = GET;
+        m_ispost = true;
+    }else {
+        printf("请求方法不是GET or POST\n");
         return BAD_REQUEST;
     }
-        
 
-
-    //目前是已经判断了第一个空格或者是\t,但是可能后面还是有空格，需要跳过空格
-    m_url += strspn(m_url, " \t");              //len = url中前面的空格数目
-
-    //目前的url...
-    //是:/index.html HTTP1.1
-    m_version = strpbrk(m_url, " \t");
-    if(!m_version) {
-        cout << "请求行中资源、版本间没有空行\n";
+    m_url += strspn(m_url, " \t");
+    m_version = strpbrk(m_url, " \t");      //第一个空格的位置
+    if (!m_version)
         return BAD_REQUEST;
-    }
-        
     *m_version++ = '\0';
     m_version += strspn(m_version, " \t");
-    // printf("%s\n", m_version);
-    //  :/index.html\0   HTTP1.1
-    if(strcasecmp(m_version, "HTTP/1.1") != 0) {
-        cout << "HTTP版本输入不正确\n";
+    if (strcasecmp(m_version, "HTTP/1.1") != 0)         //只能进行匹配HTTP/1.1版本
         return BAD_REQUEST;
-    }
-
-    //判断前缀是否是http:// 
-    if(strncasecmp(m_url, "http://", 7) == 0) {
+    if (strncasecmp(m_url, "http://", 7) == 0) {
         m_url += 7;
-        m_url = strchr(m_url, '/');             //索引到‘/’
+        m_url = strchr(m_url, '/');
     }
-    //https://的情况
     if (strncasecmp(m_url, "https://", 8) == 0) {
         m_url += 8;
         m_url = strchr(m_url, '/');
     }
-
-
-    //一般是不会带有https://等前缀的，都是单独的/直接进行资源的访问
-    if (!m_url || m_url[0] != '/') {
+    if (!m_url || m_url[0] != '/') 
         return BAD_REQUEST;
-    }
-
-    //url为/，显示默认界面
-    if(strlen(m_url) == 1)                      //如果说只是/，那么就显示我们的默认的欢迎界面
-        strcat(m_url, "index.html");      
-    m_check_state = CHECK_STATEATE_HEADER;
+    
+    //如果url只是/，那么就判断显示的界面
+    if (strlen(m_url) == 1) 
+        strcat(m_url, "index.html");
+    m_check_state = CHECK_STATEATE_HEADER;          //下面进行头部的解析
     return NO_REQUEST;
+
+
 }
 
 //解析请求首部
