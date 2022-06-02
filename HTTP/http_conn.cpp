@@ -450,6 +450,7 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text) {
     else if (strcasecmp(method, "POST") == 0) {
         m_method = GET;
         m_ispost = true;
+        printf("解析到了post请求\n");
     }else {
         printf("请求方法不是GET or POST\n");
         return BAD_REQUEST;
