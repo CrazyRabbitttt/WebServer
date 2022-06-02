@@ -48,6 +48,7 @@ time_wheel::add_timer(int timeout) {
         printf("The slot is null, now add a new timer to it.Rotation:%d, ts:%d, cur_slot:%d\n", rotation, ts, cur_slot);
         slots[ts] = timer;
     }else {     //否则将定时器进行插入，链表是不需要进行排序的，直接插入到头部就行
+        printf("The slot not null, now add a new timer to it.Rotation:%d, ts:%d, cur_slot:%d\n", rotation, ts, cur_slot);
         timer->next = slots[ts];
         slots[ts]->prev = timer;
         slots[ts] = timer;
@@ -82,7 +83,7 @@ void
 time_wheel::tick() {                //time滴答函数
     //获得时间轮上面当前槽的头节点
     tw_timer * timer = slots[cur_slot];
-    printf("current slot is %d\n", cur_slot);
+    printf("tick,tick,tick.......current slot is %d\n", cur_slot);
     while (timer) {       //下面需要进行对于当前链表的遍历，进行是否是到达timeout的判断
         //如果说rotation > 0那么说明这一轮还不到它
         if (timer->rotation > 0) {

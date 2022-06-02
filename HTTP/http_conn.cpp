@@ -538,7 +538,7 @@ http_conn::HTTP_CODE http_conn::do_request() {
     const char *p = strrchr(m_url, '/');        //p指向/的位置
     if (m_ispost && (*(p + 1) == '2' || *(p + 1) == 3)) {       //进行注册 or 登录
         //根据符号位进行判断：登陆检测或者是注册检测
-        printf("now in cgi handler\n");
+        printf("now in cgi handler, catch the event POST\n");
         char ch = m_url[1];
         char *m_real_url = (char*)malloc(sizeof(char) * 200);
 

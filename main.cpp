@@ -81,7 +81,7 @@ void cb_function(client_data* user_data) {
     /* 关闭掉对应的socket了连接 */
     close(user_data->sockfd);
     http_conn::m_user_count --;
-    printf("Close fd %d", user_data->sockfd);
+    printf("Close fd %d because of the timeout event or some thing\n", user_data->sockfd);
 }
 
 
@@ -259,7 +259,7 @@ int main(int argc, char** argv)
                         switch (signals[i])
                         {
                         case SIGALRM:
-                            timeout = 0;
+                            timeout = true;             //进行传送alarm
                             break;
                         
                         default:
