@@ -118,6 +118,7 @@ int main(int argc, char** argv)
     assert(users);
     printf("客户端数组完成...\n");
 
+    //将用户名、密码读取到内存中
     users->initmysql_result(connPool);
 
     //创建socket
@@ -155,7 +156,7 @@ int main(int argc, char** argv)
     //创建管道进行定时器的任务
     ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipefd);
     assert(ret != -1);
-    setnoblocking(pipefd[1]);           //写是非阻塞的
+    setnoblocking(pipefd[1]);           //写是非阻塞的,防止信号处理的时间过长
     addfd(epollfd, pipefd[0], false);   //epoll注册读事件，主线程处理读取管道，然后进行信号的处理
 
     addsig(SIGALRM, sig_handler, false);
@@ -200,6 +201,7 @@ int main(int argc, char** argv)
                 users_timer[connfd].address = client_address;
                 users_timer[connfd].sockfd  = connfd;
                 //客户端定时器的参数的设置
+                //设定超时时间就已经创建好定时器然后插入到时间轮上面了，返回创建好的定时器
                 tw_timer* timer = m_time_wheel.add_timer(3 * TIMESLOT);             //超时时间设置为3 * 5
                 timer->user_data = &users_timer[connfd];        //将对应的客户端的数据进行配置好
                 timer->cb_func = cb_function;                   //回调函数
@@ -221,27 +223,109 @@ int main(int argc, char** argv)
                     break;
                 }
                 users[connfd].init(connfd, client_address);
+                /* 进行定时器的设置,初始化客户端的数据
+                    创建定时器，设置回调函数、超时时间，绑定用户数据，添加定时器到链表中
+                */
+               //进行客户端的地址等的设置
+                users_timer[connfd].address = client_address;
+                users_timer[connfd].sockfd  = connfd;
+                //客户端定时器的参数的设置
+                //设定超时时间就已经创建好定时器然后插入到时间轮上面了，返回创建好的定时器
+                tw_timer* timer = m_time_wheel.add_timer(3 * TIMESLOT);             //超时时间设置为3 * 5
+                timer->user_data = &users_timer[connfd];        //将对应的客户端的数据进行配置好
+                timer->cb_func = cb_function;                   //回调函数
+                //将定时器插入到时间轮上面
+                users_timer[connfd].timer = timer;
             }
 
 #endif
             } else if(events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {        //处理异常断开连接的事件
                 //服务器需要进行连接的关闭，移除对应的定时器
-                //todo: 应该封装在定时器内部的，目前只是直接关闭而已
-                users[sockfd].close_conn();         //进行客户端连接的关闭
-            } else if(events[i].events & EPOLLIN) {                                //数据可以进行读取的事件
+                tw_timer * timer = users_timer[sockfd].timer;
+                timer->cb_func(&users_timer[sockfd]);       //回调函数进行定时器的移除
+                //call_function会将连接进行关闭
+                
+                if (timer) {
+                    m_time_wheel.del_timer(timer);          //从时间轮上面删除掉定时器
+                }
+            } else if ((sockfd == pipefd[0]) && (events[i].events & EPOLLIN)) {         //传递信号的管道可进行读取
+                int sig;
+                char signals[1024];
+                ret = recv(pipefd[0], signals, sizeof(signals), 0);
+                if (ret == -1) continue;
+                else if (ret == 0) continue;
+                else {
+                    for (int i = 0; i < ret; i++) {
+                        switch (signals[i])
+                        {
+                        case SIGALRM:
+                            timeout = 0;
+                            break;
+                        
+                        default:
+                            stop_server = true;
+                            break;
+                        }
+                    }
+                }
+            }else if(events[i].events & EPOLLIN) {                                //数据可以进行读取的事件
+                //更新定时器的超时时间
+                tw_timer* timer = users_timer[sockfd].timer; 
+
+                //进行连接的sockfd
+                int connfd = sockfd;         
                 if(users[sockfd].read_once()) {
                     //一次性将所有的数据进行读取完毕
                     //将http_conn传到线程池上，工作线程进行连接的处理
                     pool->append(users + sockfd);
+
+                    //新的数据传输，将定时器的超时时间进行往后延迟3个超时单位
+                    if (timer) {
+                        //首先删除掉，然后插入进去，时间都是O(1)
+                        m_time_wheel.del_timer(timer);
+                        tw_timer* timer =  m_time_wheel.add_timer(3 * TIMESLOT);
+                        
+                        timer->user_data = &users_timer[connfd];        //将对应的客户端的数据进行配置好
+                        timer->cb_func = cb_function;                   //回调函数
+
+                        users_timer[connfd].timer = timer;
+                    }
+
+
                 }else {     //读取数据失败
-                    printf("read_once()读取失败,main :169\n");
-                    users[sockfd].close_conn();         //进行http连接的关闭
+                    timer->cb_func(&users_timer[sockfd]);
+                    printf("主线程读取数据失败\n");
+                    if (timer) {
+                        m_time_wheel.del_timer(timer);
+                    }
                 }
             } else if (events[i].events & EPOLLOUT) {                               //数据可以进行写操作
-                if(!users[sockfd].write()) {
-                    users[sockfd].close_conn();         //如果写失败了或者不是长连接就关闭连接
+                tw_timer* timer = users_timer[sockfd].timer;
+
+                int connfd = sockfd;
+                //如果写入成功了，将定时器的超时时间进行更新
+                if (users[sockfd].write()) {
+                    //首先删除掉，然后插入进去，时间都是O(1)
+                    m_time_wheel.del_timer(timer);
+                    tw_timer* timer =  m_time_wheel.add_timer(3 * TIMESLOT);
+                    
+                    timer->user_data = &users_timer[connfd];        //将对应的客户端的数据进行配置好
+                    timer->cb_func = cb_function;                   //回调函数
+
+                    users_timer[connfd].timer = timer;
+                }else { //否则调用回调函数进行连接的移除
+                    timer->cb_func(&users_timer[sockfd]);
+                    if (timer) {
+                        m_time_wheel.del_timer(timer);
+                    }
                 }
             }
+        }
+
+        //进行定时器的滴答
+        if (timeout) {
+            timer_handler();
+            timeout = false;
         }
 
     }
@@ -249,8 +333,12 @@ int main(int argc, char** argv)
     //一般来说程序是不会跳出循环的，到这一步就是说明程序进行了断开
     close(epollfd);
     close(listenfd);
+    close(pipefd[1]);
+    close(pipefd[0]);
+
+    delete [] users_timer;  //消除掉保存的客户时间轮的信息
     delete [] users;
     delete pool;
-
+    return 0;
 
 }
