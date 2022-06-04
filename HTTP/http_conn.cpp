@@ -537,18 +537,14 @@ http_conn::HTTP_CODE http_conn::do_request() {
 
     //下面进行POST方法的处理,登陆、注册的具体的处理
     const char *p = strrchr(m_url, '/');        //p指向/的位置
-    if (m_ispost && (*(p + 1) == '2' || *(p + 1) == 3)) {       //进行注册 or 登录
+    if (m_ispost && (*(p + 1) == '2' || *(p + 1) == '3')) {       //进行注册 or 登录
         //根据符号位进行判断：登陆检测或者是注册检测
-        printf("now in cgi handler, catch the event POST\n");
         char ch = m_url[1];
         char *m_real_url = (char*)malloc(sizeof(char) * 200);
 
         strcpy(m_real_url, "/");
-        printf("533\n");
         strcat(m_real_url, m_url + 2);
-        printf("535\n");
         strncpy(m_real_file + len, m_real_url, FILENAME_LEN - len - 1);
-        printf("537\n");
         free(m_real_url);
 
 
