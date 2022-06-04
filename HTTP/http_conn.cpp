@@ -755,15 +755,11 @@ void http_conn::process() {
     //生成响应
     bool write_ret = process_write(read_ret);
     if (!write_ret) {
+        //如果不是长连接就进行关闭
         close_conn();       //不行就关闭连接
-    }
+    }   
 
-    //数据准备好了就直接进行发送,而不依靠事件驱动主函数进行捕捉可写的事件
-
-    // if (!write()) {     //如果说写失败了或者不是长连接的话就关闭连接
-    //     cout << "Now sub pthread running the write function...\n";
-    //     close_conn();
-    // }
+    //最终的写事件是由主线程获取到EPOLLOUT后写，并且进行定时器的设置
     modfd(m_epollfd, m_sockfd, EPOLLOUT);       //注册写事件
 
 }

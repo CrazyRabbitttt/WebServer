@@ -18,7 +18,7 @@
 
 #define MAX_FD  65535                   //最大文件描述符
 #define MAX_EVENT_NUMBER    10000       //最大事件数目
-#define TIMESLOT    5                   //最小的超时单位
+#define TIMESLOT    2                   //最小的超时单位
 
 // #define listenfdET                        //边缘触发模式
 #define listenfdLT                        //水平触发模式
