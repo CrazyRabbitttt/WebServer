@@ -64,6 +64,10 @@ public:
     static int m_user_count;            //用户数量也同样是共享的
     void initmysql_result(connection_pool *connPool);       ///将数据库中的内容提取到内存中
     MYSQL *mysql;
+    sockaddr_in *get_address() {                        //LOG中获得客户端的连接地址
+        return &m_address;
+    }
+
 private:
     void init();                                //进行类中字段的初始化
     void unmap();                                //文件映射到内存的解

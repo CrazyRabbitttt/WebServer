@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include "MYSQL/SqlConnectionPool.h"
 #include "Timer/timer.h"
+#include "Log/log.h"
 
 
 #define MAX_FD  65535                   //最大文件描述符
@@ -23,6 +24,9 @@
 // #define listenfdET                        //边缘触发模式
 #define listenfdLT                        //水平触发模式
 
+
+#define SYNLOG                          //同步日志
+//#define ASYNLOG
 
 //epoll事件添加、删除、oneshot,在http...cpp中声明
 
@@ -37,11 +41,6 @@ static int pipefd[2];
 static time_wheel m_time_wheel;
 static int epollfd = 0;
 
-void show_error(int connfd, const char * info) {
-    printf("%s", info);
-    send(connfd, info, strlen(info), 0);
-    close(connfd);
-}
 
 
 //设置信号函数集
@@ -85,8 +84,25 @@ void cb_function(client_data* user_data) {
 }
 
 
+//show error, passed : connfd, info 
+void show_error(int connfd, const char* info) {
+    printf("%s", info);
+    send(connfd, info, strlen(info), 0);
+    close(connfd);
+}
+
+
 int main(int argc, char** argv)
 {
+
+#ifndef ASYNLOG
+    Log::get_instance()->init("ServerLog", 2000, 800000, 8);
+#endif
+
+#ifndef SYNLOG
+    Log::getinstance()->init("ServerLog", 2000, 800000, 0);
+#endif
+
     if (argc <= 1) {
        printf("Usage: %s port_number\n", basename(argv[0]));
        exit(-1);
@@ -169,8 +185,9 @@ int main(int argc, char** argv)
     while (!stop_server) {
         int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
         if (number < 0 && errno != EINTR) {
-            //todo : Log
-            printf("epoll failure!\n");
+            
+            LOG_ERROR("%s", "epoll failure");
+            // printf("epoll failure!\n");
             break;
         }
 
@@ -185,11 +202,12 @@ int main(int argc, char** argv)
                 //accept客户端连接请求
                 int connfd = accept(listenfd, (struct sockaddr*) &client_address, &client_addrlength);
                 if (connfd < 0) {
-                    //todo : log
+                    LOG_ERROR("%s:errno is %d", "accept error", errno);
                     continue;       //失败，那就继续
                 }
                 if (http_conn::m_user_count >= MAX_FD) {        //目前的连接数目太多了，要回送给客户端信息
-                    //todo : log
+                    show_error(connfd, "Internal server busy!please try again...");
+                    LOG_ERROR("%s", "Internal server busy!please try again...");
                     continue;
                 }
                 users[connfd].init(connfd, client_address);     //init HTTP请求连接
@@ -215,11 +233,12 @@ int main(int argc, char** argv)
             while (1) {
                 int connfd = accept(listenfd, (struct sockaddr*)&client_address, &client_addrlength);
                 if (connfd < 0) {
-                    //todo : log
+                    LOG_ERROR("%s:errno is:%d", "accept error", errno);
                     break;
                 }
                 if (http_conn::m_user_count >= MAX_FD) {
-                    //todo : log
+                    show_error(connfd, "Internal server busy");
+                    LOG_ERROR("%s", "Internal server busy");
                     break;
                 }
                 users[connfd].init(connfd, client_address);
@@ -237,6 +256,7 @@ int main(int argc, char** argv)
                 //将定时器插入到时间轮上面
                 users_timer[connfd].timer = timer;
             }
+            continue;
 
 #endif
             } else if(events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {        //处理异常断开连接的事件
@@ -277,6 +297,8 @@ int main(int argc, char** argv)
                 if(users[sockfd].read_once()) {
                     //一次性将所有的数据进行读取完毕
                     //将http_conn传到线程池上，工作线程进行连接的处理
+                    LOG_INFO("Connect with the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
+                    Log::get_instance()->flush();               //读到新的内容了，刷新原来保存的日志
                     pool->append(users + sockfd);
 
                     //新的数据传输，将定时器的超时时间进行往后延迟3个超时单位
@@ -287,10 +309,10 @@ int main(int argc, char** argv)
                         
                         timer->user_data = &users_timer[connfd];        //将对应的客户端的数据进行配置好
                         timer->cb_func = cb_function;                   //回调函数
-
+                        LOG_INFO("%s", "adjust the timer once..");
+                        Log::get_instance()->flush();                   //刷新到文件上
                         users_timer[connfd].timer = timer;
                     }
-
 
                 }else {     //读取数据失败
                     timer->cb_func(&users_timer[sockfd]);
@@ -305,6 +327,9 @@ int main(int argc, char** argv)
                 int connfd = sockfd;
                 //如果写入成功了，将定时器的超时时间进行更新
                 if (users[sockfd].write()) {
+                    LOG_INFO("send data to the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
+                    Log::get_instance()->flush();
+
                     //首先删除掉，然后插入进去，时间都是O(1)
                     m_time_wheel.del_timer(timer);
                     tw_timer* timer =  m_time_wheel.add_timer(3 * TIMESLOT);
@@ -312,6 +337,8 @@ int main(int argc, char** argv)
                     timer->user_data = &users_timer[connfd];        //将对应的客户端的数据进行配置好
                     timer->cb_func = cb_function;                   //回调函数
 
+                    LOG_INFO("%s", "adjust the timer once..");
+                    Log::get_instance()->flush();                   //刷新到文件上
                     users_timer[connfd].timer = timer;
                 }else { //否则调用回调函数进行连接的移除
                     timer->cb_func(&users_timer[sockfd]);
