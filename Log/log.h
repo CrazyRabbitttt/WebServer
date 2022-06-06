@@ -19,7 +19,7 @@ public:
         return &instance;
     }
 
-    //公有的方法调用单例指针调用私有方法
+    //公有的方法调用单例指针调用私有方法（异步写日志线程调用的函数）
     static void* flush_log_thread(void* args) {
         Log::get_instance()->async_write_log();
     }

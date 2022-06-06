@@ -33,6 +33,7 @@ bool Log::init(const char* file_name, int log_buf_size, int split_lines, int max
         pthread_create(&tid, NULL, flush_log_thread, NULL);
     }
 
+    //输出日志的长度
     m_log_buf_size = log_buf_size;
     m_buf = new char[m_log_buf_size];
     memset(m_buf, '\0', sizeof(m_buf));
@@ -41,8 +42,8 @@ bool Log::init(const char* file_name, int log_buf_size, int split_lines, int max
     m_split_lines = split_lines;
 
     time_t t = time(NULL);
-    struct tm *sys_time = localtime(&t);
-    struct tm my_tm = *sys_time;
+    struct tm *sys_tm = localtime(&t);
+    struct tm my_tm = *sys_tm;
 
     //进行log文件名称的更改
     //1.lalala -> 2022_09_20_lalala
@@ -107,7 +108,7 @@ void Log::write_log(int level, const char* format, ...) {
     //更新现在有的行数
     m_count++;
 
-    //日志不是今天写入的或者行数是最大行(m_split_lines)的倍数
+    //日志不是今天写入的或者行数是最大行(m_split_lines)的倍数 -> 当前写的日志文件满了
     if (m_today != my_tm.tm_mday || m_count % m_split_lines == 0) {
         char new_log[256] = {0};
         fflush(m_fptr);         //将内容刷新到文件
@@ -137,7 +138,6 @@ void Log::write_log(int level, const char* format, ...) {
     //将传入的format参数赋值给valist,用于格式化的输出
     va_start(valist, format);
 
-
     string log_str;
 
     m_mutex.lock();
@@ -149,8 +149,8 @@ void Log::write_log(int level, const char* format, ...) {
     //vsnprintf:格式化带size的向字符串写入数据
     //内容的格式化,
     int m = vsnprintf(m_buf + n, m_log_buf_size - 1, format, valist);
-    m_buf[n + m] = '\n';
-    m_buf[m + m + 1] = '\0';
+    m_buf[n + m + 1] = '\n';
+    m_buf[m + m + 2] = '\0';
 
     log_str = m_buf;
     m_mutex.unlock();
